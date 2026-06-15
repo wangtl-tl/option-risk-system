@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期权持仓风控系统 V2.0</title>
+    <style>
+        /* ============================================
+           色彩体系
+           ============================================ */
+        :root {
+            --bg: #0B1120;
+            --surface: #151D2E;
+            --surface2: #1C2539;
+            --border: #2A3548;
+            --text: #E8EDF4;
+            --text2: #8B97AD;
+            --text3: #5A6780;
+            --blue: #3B82F6;
+            --green: #22C55E;
+            --red: #EF4444;
+            --amber: #F59E0B;
+            --cyan: #06B6D4;
+            --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3A4558; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4A5568; }
+
+        /* ============================================
+           全局状态条
+           ============================================ */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 6px 20px;
+            height: 38px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-dot.ok { background: var(--green); }
+        .status-dot.warn { background: var(--amber); animation: pulse-dot 2s infinite; }
+        .status-dot.critical { background: var(--red); animation: pulse-dot 1s infinite; }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .status-label { color: var(--text3); font-size: 11px; }
+        .status-value { font-weight: 500; font-variant-numeric: tabular-nums; }
+        .status-value.up { color: var(--red); }
+        .status-value.down { color: var(--green); }
+
+        .status-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-refresh {
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 500;
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            transition: background 0.15s;
+        }
+        .btn-refresh:hover { background: #2563EB; }
+        .btn-refresh.spinning { opacity: 0.6; cursor: not-allowed; }
+
+        /* ============================================
+           主体布局
+           ============================================ */
+        .layout {
+            display: flex;
+            height: calc(100vh - 38px);
+        }
+
+        /* ============================================
+           侧边栏
+           ============================================ */
+        .sidebar {
+            width: 200px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 16px 0 8px;
+        }
+        .sidebar-label {
+            font-size: 10px;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            padding: 0 16px;
+            margin-bottom: 6px;
+        }
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 16px;
+            cursor: pointer;
+            color: var(--text2);
+            font-size: 13px;
+            border-left: 2px solid transparent;
+            transition: all 0.12s;
+        }
+        .data-source-legend {
+            padding: 12px 16px;
+            font-size: 11px;
+            color: var(--text3);
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+        .data-source-legend .label {
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .data-source-legend .item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .data-source-legend .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .data-source-legend .dot.tqsdk { background: #10B981; }
+        .data-source-legend .dot.database { background: #3B82F6; }
+        .data-source-legend .dot.estimate { background: #F59E0B; }
+        .sidebar-item:hover {
+            color: var(--text);
+            background: var(--surface2);
+        }
+        .sidebar-item.active {
+            color: #fff;
+            background: var(--surface2);
+            border-left-color: var(--blue);
+        }
+        .sidebar-item .indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .sidebar-item .indicator.ok { background: var(--green); }
+        .sidebar-item .indicator.warn { background: var(--amber); }
+        .sidebar-item .indicator.critical { background: var(--red); }
+
+        .sidebar-spacer { flex: 1; }
+
+        .sidebar-account {
+            padding: 14px 16px;
+            border-top: 1px solid var(--border);
+        }
+        .acct-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        .acct-row .lbl { color: var(--text3); }
+        .acct-row .val { font-weight: 500; }
+
+        .mini-progress {
+            height: 3px;
+            background: var(--border);
+            margin-top: 8px;
+        }
+        .mini-progress-fill {
+            height: 100%;
+            transition: width 0.4s;
+        }
+        .mini-progress-fill.safe { background: var(--green); }
+        .mini-progress-fill.warn { background: var(--amber); }
+        .mini-progress-fill.danger { background: var(--red); }
+
+        /* ============================================
+           主内容区
+           ============================================ */
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px 40px;
+        }
+
+        /* ============================================
+           顶部 KPI 行
+           ============================================ */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .risk-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 18px 22px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .risk-circle {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        .risk-circle.normal { background: rgba(34,197,94,0.12); color: var(--green); }
+        .risk-circle.watch { background: rgba(245,158,11,0.12); color: var(--amber); }
+        .risk-circle.warning { background: rgba(249,115,22,0.12); color: #F97316; }
+        .risk-circle.critical { background: rgba(239,68,68,0.12); color: var(--red); animation: pulse-circle 1.5s infinite; }
+
+        @keyframes pulse-circle {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); }
+            50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+
+        .risk-info h3 {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+        .risk-info p {
+            color: var(--text2);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .kpi-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 16px 20px;
+        }
+        .kpi-label {
+            font-size: 11px;
+            color: var(--text3);
+            margin-bottom: 6px;
+            letter-spacing: 0.3px;
+        }
+        .kpi-value {
+            font-size: 24px;
+            font-weight: 500;
+            margin-bottom: 3px;
+            font-variant-numeric: tabular-nums;
+        }
+        .kpi-value.pos { color: var(--red); }
+        .kpi-value.neg { color: var(--green); }
+        .kpi-sub {
+            font-size: 11px;
+            color: var(--text2);
+        }
+
+        /* ============================================
+           板块标题
+           ============================================ */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .section-badge {
+            font-size: 11px;
+            color: var(--text3);
+            font-weight: 400;
+        }
+
+        /* ============================================
+           希腊字母四卡片
+           ============================================ */
+        .greeks-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .greek-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 16px 18px;
+            text-align: center;
+        }
+        .greek-symbol {
+            font-size: 10px;
+            color: var(--text3);
+            margin-bottom: 8px;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+        }
+        .greek-number {
+            font-size: 26px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            font-variant-numeric: tabular-nums;
+            font-family: var(--font-mono);
+        }
+        .greek-number.pos { color: var(--red); }
+        .greek-number.neg { color: var(--green); }
+        .greek-desc {
+            font-size: 10px;
+            color: var(--text3);
+            line-height: 1.4;
+        }
+
+        /* ============================================
+           IV 指标三卡片
+           ============================================ */
+        .iv-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 14px;
+            margin-bottom: 18px;
+        }
+
+        .iv-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 14px 18px;
+            text-align: center;
+        }
+        .iv-label {
+            font-size: 11px;
+            color: var(--text3);
+            margin-bottom: 4px;
+        }
+        .iv-value {
+            font-size: 20px;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+        .iv-value.high { color: var(--red); }
+        .iv-value.mid { color: var(--amber); }
+        .iv-value.low { color: var(--green); }
+
+        /* ============================================
+           品种希腊字母条
+           ============================================ */
+        .product-strip {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+
+        .product-chip {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 11px 16px;
+            min-width: 105px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .product-chip:hover { border-color: var(--blue); }
+        .product-chip .name {
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .product-chip .delta {
+            font-size: 14px;
+            font-weight: 500;
+            font-family: var(--font-mono);
+        }
+        .product-chip .delta.pos { color: var(--red); }
+        .product-chip .delta.neg { color: var(--green); }
+        .product-chip .gamma-val {
+            font-size: 10px;
+            color: var(--text3);
+            margin-top: 2px;
+        }
+        .product-chip .theta-val {
+            font-size: 10px;
+            color: var(--text3);
+            margin-top: 1px;
+        }
+        .product-chip .theta-val .t-label { color: var(--text3); }
+        .product-chip .theta-val .t-num { font-family: var(--font-mono); }
+        .product-chip .theta-val .t-num.pos { color: var(--red); }
+        .product-chip .theta-val .t-num.neg { color: var(--green); }
+
+        /* ============================================
+           持仓明细表
+           ============================================ */
+        .data-section {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 18px;
+        }
+        .data-section-header {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .filter-tabs {
+            display: flex;
+            gap: 4px;
+        }
+        .filter-tab {
+            padding: 3px 10px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text2);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            transition: all 0.12s;
+        }
+        .filter-tab:hover { color: var(--text); }
+        .filter-tab.active {
+            background: var(--blue);
+            color: #fff;
+            border-color: var(--blue);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .data-table th {
+            padding: 9px 12px;
+            text-align: left;
+            font-weight: 500;
+            color: var(--text3);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+            background: rgba(0,0,0,0.15);
+        }
+        .data-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(42,53,72,0.4);
+            white-space: nowrap;
+        }
+        .data-table tbody tr:hover td {
+            background: rgba(59,130,246,0.05);
+        }
+        .data-table .num {
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        .data-table .num.pos { color: var(--red); }
+        .data-table .num.neg { color: var(--green); }
+        .data-table .text-center { text-align: center; }
+
+        tr.row-warn { background: rgba(245,158,11,0.04); }
+        tr.row-danger { background: rgba(239,68,68,0.06); }
+
+        .tag {
+            display: inline-block;
+            padding: 1px 7px;
+            font-size: 10px;
+            font-weight: 500;
+            font-family: var(--font-sans);
+        }
+        .tag-ok { background: rgba(34,197,94,0.12); color: var(--green); }
+        .tag-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+        .tag-danger { background: rgba(239,68,68,0.12); color: var(--red); }
+
+        /* ============================================
+           风险清单 & 建议
+           ============================================ */
+        .risk-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+        .risk-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--border);
+        }
+        .risk-item.lvl-watch { border-left-color: var(--amber); }
+        .risk-item.lvl-warning { border-left-color: #F97316; }
+        .risk-item.lvl-critical { border-left-color: var(--red); }
+
+        .risk-item-info { flex: 1; }
+        .risk-item-contract { font-weight: 500; font-size: 13px; margin-bottom: 2px; }
+        .risk-item-reason { font-size: 11px; color: var(--text2); }
+        .risk-item-metrics {
+            display: flex;
+            gap: 14px;
+            font-size: 11px;
+            color: var(--text3);
+            font-family: var(--font-mono);
+            white-space: nowrap;
+        }
+
+        .advice-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+        .advice-item {
+            padding: 12px 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--border);
+        }
+        .advice-item.紧急 { border-left-color: var(--red); }
+        .advice-item.重要 { border-left-color: #F97316; }
+        .advice-item.关注 { border-left-color: var(--amber); }
+        .advice-item.正常 { border-left-color: var(--green); }
+
+        .advice-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .advice-priority {
+            font-size: 10px;
+            font-weight: 500;
+            padding: 2px 8px;
+            letter-spacing: 0.3px;
+            font-family: var(--font-sans);
+        }
+        .advice-priority.紧急 { background: rgba(239,68,68,0.18); color: var(--red); }
+        .advice-priority.重要 { background: rgba(249,115,22,0.18); color: #F97316; }
+        .advice-priority.关注 { background: rgba(245,158,11,0.18); color: var(--amber); }
+        .advice-priority.正常 { background: rgba(34,197,94,0.18); color: var(--green); }
+        .advice-action { font-weight: 500; font-size: 13px; }
+        .advice-reason { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+        .advice-detail { font-size: 11px; color: var(--text3); line-height: 1.6; }
+
+        /* ============================================
+           汇总页：策略对比表
+           ============================================ */
+        .compare-table th, .compare-table td { text-align: center; }
+        .compare-table td:first-child { text-align: left; font-weight: 500; }
+
+        .compare-table tfoot tr {
+            background: rgba(59,130,246,0.08);
+            font-weight: 500;
+        }
+
+        /* ============================================
+           集中度
+           ============================================ */
+        .conc-bar {
+            height: 18px;
+            background: var(--bg);
+            position: relative;
+            overflow: hidden;
+        }
+        .conc-fill {
+            height: 100%;
+            background: var(--blue);
+            transition: width 0.3s;
+        }
+        .conc-fill.high { background: var(--red); }
+        .conc-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        /* ============================================
+           加载 / 空 / 错误状态
+           ============================================ */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: var(--text3);
+            gap: 14px;
+        }
+        .loading-spinner {
+            width: 28px;
+            height: 28px;
+            border: 2px solid var(--border);
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text3);
+            font-size: 13px;
+        }
+
+        /* ============================================
+           帮助面板
+           ============================================ */
+        .help-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.15s;
+        }
+        .help-btn:hover { background: #2563EB; }
+
+        /* ============================================
+           说明书弹窗
+           ============================================ */
+        .doc-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .doc-overlay.show { display: flex; }
+
+        .doc-modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            width: 92%;
+            max-width: 900px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 28px 32px;
+            position: relative;
+        }
+        .doc-modal h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .doc-modal .doc-version {
+            font-size: 11px;
+            color: var(--text3);
+            margin-bottom: 18px;
+        }
+        .doc-modal h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--cyan);
+            margin: 22px 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        .doc-modal h3 {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            margin: 14px 0 6px;
+        }
+        .doc-modal p, .doc-modal li {
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 1.8;
+        }
+        .doc-modal ul, .doc-modal ol { margin-left: 20px; }
+        .doc-modal code {
+            background: var(--bg);
+            padding: 1px 5px;
+            font-size: 11px;
+            color: var(--amber);
+            font-family: var(--font-mono);
+        }
+        .doc-modal pre {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--text2);
+            font-family: var(--font-mono);
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        .doc-modal table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 11px;
+        }
+        .doc-modal th, .doc-modal td {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+        .doc-modal th {
+            background: var(--bg);
+            color: var(--text3);
+            font-weight: 500;
+        }
+        .doc-modal td { color: var(--text2); }
+        .doc-modal .close-btn {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: none;
+            border: none;
+            color: var(--text3);
+            font-size: 22px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .doc-modal .close-btn:hover { color: var(--text); }
+        .doc-modal .toc {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            margin: 12px 0;
+            font-size: 11px;
+        }
+        .doc-modal .toc a {
+            color: var(--blue);
+            text-decoration: none;
+            display: block;
+            padding: 2px 0;
+        }
+        .doc-modal .toc a:hover { text-decoration: underline; }
+        .doc-modal .warn-box {
+            background: rgba(245,158,11,0.08);
+            border-left: 3px solid var(--amber);
+            padding: 8px 12px;
+            margin: 8px 0;
+            font-size: 11px;
+            color: var(--amber);
+        }
+        .doc-modal .formula-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            margin: 8px 0;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text);
+            line-height: 1.7;
+        }
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .help-overlay.show { display: flex; }
+
+        .help-modal {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            width: 90%;
+            max-width: 750px;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 24px;
+            position: relative;
+        }
+        .help-modal h2 { font-size: 15px; font-weight: 500; color: var(--cyan); margin-bottom: 16px; }
+        .help-modal h3 { font-size: 13px; font-weight: 500; color: var(--text); margin: 16px 0 8px; }
+        .help-modal p, .help-modal li { font-size: 12px; color: var(--text2); line-height: 1.8; }
+        .help-modal ul { margin-left: 20px; }
+        .help-close {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: none;
+            border: none;
+            color: var(--text3);
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .help-close:hover { color: var(--text); }
+
+        .threshold-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 11px;
+        }
+        .threshold-table th, .threshold-table td {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        .threshold-table th { background: var(--surface); color: var(--text2); font-weight: 500; }
+        .t-normal { color: var(--green); }
+        .t-watch { color: var(--amber); }
+        .t-warning { color: #F97316; }
+        .t-critical { color: var(--red); }
+
+        /* ============================================
+           响应式
+           ============================================ */
+        @media (max-width: 1200px) {
+            .greeks-grid { grid-template-columns: repeat(2, 1fr); }
+            .kpi-row { grid-template-columns: 1fr 1fr; }
+            .product-strip { gap: 6px; }
+        }
+        @media (max-width: 860px) {
+            .sidebar { width: 56px; }
+            .sidebar-item { padding: 9px 14px; justify-content: center; }
+            .sidebar-item span:not(.indicator) { display: none; }
+            .sidebar-label { display: none; }
+            .sidebar-account { display: none; }
+            .kpi-row { grid-template-columns: 1fr; }
+            .greeks-grid { grid-template-columns: 1fr 1fr; }
+            .iv-row { grid-template-columns: 1fr; }
+            .data-table { font-size: 11px; }
+        }
+    /* 系统日志面板 */
+    .log-panel {
+        position: fixed;
+        top: 50px;
+        right: 20px;
+        width: 700px;
+        height: 500px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        background: var(--bg2);
+        border-bottom: 1px solid var(--border);
+    }
+    .log-title { font-size: 16px; font-weight: 600; color: var(--text); }
+    .log-controls { display: flex; gap: 8px; align-items: center; }
+    .log-controls select {
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--card);
+        color: var(--text);
+        font-size: 12px;
+    }
+    .log-controls button {
+        padding: 4px 12px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .log-controls .btn-close {
+        background: transparent;
+        color: var(--text2);
+        font-size: 16px;
+        padding: 4px 8px;
+    }
+    .log-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+    .log-entry {
+        padding: 3px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .log-timestamp { color: var(--text2); margin-right: 8px; }
+    .log-level { font-weight: 600; margin-right: 8px; }
+    .log-INFO .log-level { color: #5bc0de; }
+    .log-WARN .log-level { color: #f0ad4e; }
+    .log-ERROR .log-level { color: #d9534f; }
+    .log-DEBUG .log-level { color: #999; }
+    .log-message { color: var(--text); }
+    .log-loading { text-align: center; color: var(--text2); padding: 20px; }
+    @media (max-width: 768px) {
+        .log-panel { width: 90%; right: 5%; height: 400px; }
+    }
+
+    </style>
+</head>
+<body>
+
+    <!-- 全局状态条 -->
+    <div class="status-bar" id="statusBar">
+        <div class="status-item">
+            <span class="status-dot ok" id="statusDot"></span>
+            <span class="status-label">系统</span>
+            <span class="status-value" id="statusText">正常</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">组合PnL</span>
+            <span class="status-value" id="statusPnl">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">保证金</span>
+            <span class="status-value" id="statusMargin">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Delta</span>
+            <span class="status-value" id="statusDelta">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Theta</span>
+            <span class="status-value" id="statusTheta">--</span>
+        </div>
+        <div class="status-actions">
+            <span class="status-label" id="statusTime">--</span>
+            <button class="btn-refresh" id="btnRefresh" onclick="manualRefresh()">刷新</button>
+        </div>
+    </div>
+
+    <!-- 主体 -->
+    <div class="layout">
+        <!-- 侧边栏 -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-label">策略</div>
+                <div class="sidebar-item active" data-page="eagle">
+                    <span class="indicator ok" id="ind-eagle"></span>飞鹰策略
+                </div>
+                <div class="sidebar-item" data-page="single_sell">
+                    <span class="indicator ok" id="ind-single_sell"></span>单卖策略
+                </div>
+                <div class="sidebar-item" data-page="double_sell">
+                    <span class="indicator ok" id="ind-double_sell"></span>双卖策略
+                </div>
+                <div class="sidebar-item" data-page="summary" style="color:#fff;font-weight:500;">
+                    全策略汇总
+                </div>
+            </div>
+            <div class="sidebar-spacer"></div>
+            <div class="data-source-legend">
+                <div class="label">数据来源</div>
+                <div class="item"><span class="dot tqsk"></span> TqSdk实时</div>
+                <div class="item"><span class="dot database"></span> 数据库IV</div>
+                <div class="item"><span class="dot estimate"></span> BS估算</div>
+            </div>
+            <div class="sidebar-item" onclick="toggleLogs()" style="justify-content:center; border-left:none; color:var(--text2); font-size:14px;">
+                📋 系统日志
+            </div>
+            <div class="sidebar-item" onclick="toggleDoc()" style="justify-content:center; border-left:none; color:var(--text2); font-size:14px;">
+                📖 说明书
+            </div>
+            <div class="sidebar-account">
+                <div class="acct-row"><span class="lbl">总资产</span><span class="val" id="acctTotal">--</span></div>
+                <div class="acct-row"><span class="lbl">已用保证金</span><span class="val" id="acctUsed">--</span></div>
+                <div class="acct-row"><span class="lbl">可用资金</span><span class="val" id="acctAvail">--</span></div>
+                <div class="mini-progress"><div class="mini-progress-fill safe" id="acctBar" style="width:0%"></div></div>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main">
+            <div id="main-content">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <span>加载持仓数据...</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 帮助 -->
+    <button class="help-btn" onclick="toggleHelp()">?</button>
+        <div class="help-overlay" id="helpOverlay">
+        <div class="help-modal">
+            <button class="help-close" onclick="toggleHelp()">&times;</button>
+            <h2>操作说明与字段释义</h2>
+            <h3>一、系统概述</h3>
+            <p>本系统实时监控飞鹰策略、单卖策略、双卖策略三类期权持仓的风险指标，自动判定风险等级并生成调仓建议。</p>
+            <h3>二、风险等级规则</h3>
+            <table class="threshold-table">
+                <tr><th>指标</th><th class="t-normal">正常</th><th class="t-watch">关注</th><th class="t-warning">预警</th><th class="t-critical">高危</th></tr>
+                <tr><td>保证金使用率</td><td class="t-normal">&le;60%</td><td class="t-watch">60-80%</td><td class="t-warning">80-90%</td><td class="t-critical">&gt;90%</td></tr>
+                <tr><td>IV分位</td><td class="t-normal">30-70%</td><td class="t-watch">70-80%</td><td class="t-warning">80-90%</td><td class="t-critical">&gt;90%</td></tr>
+                <tr><td>ATR偏离</td><td class="t-normal">&plusmn;1倍</td><td class="t-watch">&plusmn;1-1.5</td><td class="t-warning">&plusmn;1.5-2</td><td class="t-critical">&gt;&plusmn;2</td></tr>
+                <tr><td>到期天数</td><td class="t-normal">&gt;5天</td><td class="t-watch">3-5天</td><td class="t-warning">1-3天</td><td class="t-critical">&lt;1天</td></tr>
+            </table>
+            <h3>三、字段释义</h3>
+            <ul>
+                <li><strong>Delta</strong>: 标的价格变动1元，组合价值变动金额</li>
+                <li><strong>Gamma</strong>: Delta对标的价格的敏感度</li>
+                <li><strong>Vega</strong>: IV变动1%，组合价值变动金额</li>
+                <li><strong>Theta</strong>: 时间流逝1天，组合价值变动金额</li>
+                <li><strong>IV分位</strong>: 当前IV在历史分布中的百分位</li>
+                <li><strong>DTE</strong>: 到期剩余天数</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 说明书弹窗 -->
+    <div class="doc-overlay" id="docOverlay">
+        <div class="doc-modal">
+            <button class="close-btn" onclick="toggleDoc()">&times;</button>
+            <h1>期权持仓风控系统 V2.1 — 系统说明书</h1>
+            <div class="doc-version">版本：V2.1 &nbsp;|&nbsp; 日期：2026-06-11 &nbsp;|&nbsp; 维护：小风（AI助手）</div>
+
+            <div class="toc">
+                <strong>目录</strong><br>
+                <a href="#ch1">一、系统概述</a>
+                <a href="#ch2">二、文件结构说明</a>
+                <a href="#ch3">三、数据流程图</a>
+                <a href="#ch4">四、配置说明（config.ini）</a>
+                <a href="#ch5">五、positions.json 字段说明</a>
+                <a href="#ch6">六、计算公式详解（核心）</a>
+                <a href="#ch7">七、策略分类规则</a>
+                <a href="#ch8">八、数据质量标注说明</a>
+                <a href="#ch9">九、API接口说明</a>
+                <a href="#ch10">十、使用流程说明</a>
+                <a href="#ch11">十一、前端界面说明</a>
+                <a href="#ch12">十二、常见问题（FAQ）</a>
+            </div>
+
+            <h2 id="ch1">一、系统概述</h2>
+            <p>本系统为<strong>飞鹰/单卖/双卖策略一体化持仓风控系统</strong>，覆盖国内6大期货交易所14个商品期权品种，提供实时希腊字母计算、风险等级判定、调仓建议和Web可视化界面。</p>
+            <h3>核心功能</h3>
+            <ul>
+                <li>手动维护持仓数据（positions.json），系统自动计算风控指标</li>
+                <li>三级标的价格来源：TqSdk期货行情 [R] > IV分位接口 [S] > 行权价均值 [U]</li>
+                <li>两级期权价格来源：TqSdk期权行情 [R] > positions.json静态价格 [S]</li>
+                <li>希腊字母计算：TqSdk OPTION_GREEKS引擎 [R] > Black-Scholes公式 [S]</li>
+                <li>风险等级综合判定（保证金率 / IV分位 / ATR偏离度 / DTE）</li>
+                <li>Web界面实时展示（Bloomberg风格深色主题）</li>
+                <li>盘中自动刷新（默认10分钟）</li>
+            </ul>
+
+            <h2 id="ch2">二、文件结构说明</h2>
+            <table>
+                <tr><th>文件</th><th>作用</th><th>说明</th></tr>
+                <tr><td><code>config.ini</code></td><td>全局配置文件</td><td>账户、阈值、策略映射、服务器端口</td></tr>
+                <tr><td><code>positions.json</code></td><td><strong>持仓数据文件</strong></td><td><strong>用户手动编辑此文件更新持仓</strong></td></tr>
+                <tr><td><code>risk_system.py</code></td><td>后端主程序</td><td>数据加载、Greeks计算、HTTP服务</td></tr>
+                <tr><td><code>index.html</code></td><td>前端界面</td><td>V2.0三栏仪表盘布局</td></tr>
+                <tr><td><code>一键运行.bat</code></td><td>Windows启动脚本</td><td>双击启动系统</td></tr>
+            </table>
+
+            <h2 id="ch3">三、数据流程图</h2>
+            <pre>
+positions.json（手动维护）
+    ↓
+_load_manual_positions() → 解析合约代码 + 补充字段
+    ↓
+StrategyClassifier.classify() → 策略分类（P1: category字段 / P2: config.ini）
+    ↓
+IvApiFetcher.fetch_all() → IV分位数据（标的价格S + IV% + ATR）
+    ↓
+TqUnderlyingFetcher.fetch_prices() → TqSdk期货价格S（覆盖IV API）
+    ↓
+TqSdk期权预订阅 → 期权最新价last_price（覆盖positions.json）
+    ↓
+RiskCalculator.calculate_greeks() → 希腊字母（TqSdk引擎 > BS公式）
+    ↓
+_process_strategy() → 策略级指标汇总（delta/gamma/vega/theta/iv_spread/atr_deviation）
+    ↓
+data.json（原子写入）→ HTTP API → index.html（前端渲染）</pre>
+
+            <h2 id="ch4">四、配置说明（config.ini）</h2>
+            <h3>[account] 段</h3>
+            <table>
+                <tr><th>参数</th><th>说明</th><th>默认值</th></tr>
+                <tr><td><code>tq_account</code></td><td>天勤账号（选填，免费版无需填写）</td><td>空</td></tr>
+                <tr><td><code>tq_password</code></td><td>天勤密码（选填）</td><td>空</td></tr>
+            </table>
+            <h3>[refresh] 段</h3>
+            <table>
+                <tr><th>参数</th><th>说明</th><th>默认值</th></tr>
+                <tr><td><code>intraday_interval</code></td><td>盘中自动刷新间隔（分钟）</td><td>10</td></tr>
+                <tr><td><code>after_hours_interval</code></td><td>盘后自动刷新间隔（分钟）</td><td>30</td></tr>
+                <tr><td><code>auto_refresh</code></td><td>是否启用自动刷新</td><td>true</td></tr>
+            </table>
+            <h3>[risk_thresholds] 段（风险阈值）</h3>
+            <table>
+                <tr><th>参数</th><th>正常值</th><th>关注</th><th>预警</th><th>紧急</th></tr>
+                <tr><td><code>margin_normal_max</code></td><td>≤60%</td><td>>60%</td><td>>80%</td><td>>90%</td></tr>
+                <tr><td><code>iv_normal_max</code></td><td>≤70%</td><td>>70%</td><td>>80%</td><td>>90%</td></tr>
+                <tr><td><code>atr_normal_max</code></td><td>≤1.0</td><td>>1.0</td><td>>1.5</td><td>>2.0</td></tr>
+                <tr><td><code>dte_normal_min</code></td><td>≥5天</td><td><5天</td><td><3天</td><td><1天</td></tr>
+                <tr><td><code>delta_neutral_min/max</code></td><td>[-0.15, +0.15]</td><td>—</td><td>—</td><td>—</td></tr>
+            </table>
+
+            <h2 id="ch5">五、positions.json 字段说明</h2>
+            <p>每笔持仓必须包含以下字段：</p>
+            <table>
+                <tr><th>字段</th><th>类型</th><th>说明</th><th>示例</th></tr>
+                <tr><td><code>contract</code></td><td>string</td><td>合约代码</td><td><code>CF607C16000</code> 或 <code>y2607-C-8500</code></td></tr>
+                <tr><td><code>category</code></td><td>string</td><td><strong>策略分类</strong>（最高优先级）</td><td>飞鹰策略 / 双卖策略 / 单卖策略</td></tr>
+                <tr><td><code>product</code></td><td>string</td><td>品种代码</td><td>CF / pg / 1c</td></tr>
+                <tr><td><code>direction</code></td><td>string</td><td>持仓方向</td><td>空（卖出）/ 多（买入）</td></tr>
+                <tr><td><code>volume</code></td><td>int</td><td>手数</td><td>23</td></tr>
+                <tr><td><code>open_price</code></td><td>float</td><td>开仓均价</td><td>251.0</td></tr>
+                <tr><td><code>last_price</code></td><td>float</td><td>最新价（可填0，系统自动获取）</td><td>0</td></tr>
+                <tr><td><code>float_pnl</code></td><td>float</td><td>浮动盈亏（来自交易软件）</td><td>-4370.0</td></tr>
+                <tr><td><code>margin</code></td><td>float</td><td>占用保证金（来自交易软件）</td><td>153300.75</td></tr>
+                <tr><td><code>expiry_date</code></td><td>string</td><td><strong>期权精确到期日（YYYY-MM-DD）</strong></td><td>2026-06-11</td></tr>
+            </table>
+            <div class="warn-box">
+                ⚠️ <strong><code>expiry_date</code>是关键字段</strong>：填写后系统优先用此计算DTE，否则用<code>_estimate_dte()</code>估算，误差可达3天。
+            </div>
+
+            <h2 id="ch6">六、计算公式详解（核心章节）</h2>
+
+            <h3>6.1 DTE（距到期天数）计算</h3>
+            <p><strong>优先级1（最高）：<code>expiry_date</code>字段</strong></p>
+            <pre>exp_d = datetime.date.fromisoformat("2026-06-11")
+dte = max((exp_d - datetime.date.today()).days, 1)</pre>
+            <p>直接读取positions.json中的<code>expiry_date</code>字段；今天到期时DTE=1（避免BS公式T=0发散）。</p>
+            <p><strong>优先级2（fallback）：<code>_estimate_dte()</code>估算</strong></p>
+            <pre># 按"合约月前一个月15日"估算
+# 例："2607" → 2026年6月15日
+# 例外：JD合约到期日 = 合约月当月15日（不往前推一个月）</pre>
+            <p>仅当<code>expiry_date</code>字段为空时触发，精度较低，建议手动填写<code>expiry_date</code>。</p>
+
+            <h3>6.2 IV（隐含波动率）估算</h3>
+            <p>函数：<code>_estimate_iv(S, K, T, is_call, iv_data=None, product=None)</code></p>
+            <table>
+                <tr><th>优先级</th><th>来源</th><th>说明</th></tr>
+                <tr><td>0（最高）</td><td>TqSdk OPTION_IMPV引擎 [R]</td><td>从市场期权价格反推IV，精度最高</td></tr>
+                <tr><td>1</td><td>IV分位接口数据 [S]</td><td><code>iv_avg</code>字段 / 100</td></tr>
+                <tr><td>2</td><td>历史波动率（HV）[S]</td><td>本地数据库30日历史波动率</td></tr>
+                <tr><td>3</td><td>从平值期权价格反推 [S]</td><td>简化公式：iv ≈ 2 × option_price / S × sqrt(T)</td></tr>
+                <tr><td>4（最低）</td><td>默认值</td><td>0.15（15%）</td></tr>
+            </table>
+
+            <h3>6.3 希腊字母（Greeks）计算</h3>
+            <p><strong>方向乘数规则：</strong></p>
+            <table>
+                <tr><th>持仓方向</th><th>multiplier</th><th>说明</th></tr>
+                <tr><td>卖出期权（空）</td><td><strong>-1</strong></td><td>卖方Greeks取反</td></tr>
+                <tr><td>买入期权（多）</td><td><strong>+1</strong></td><td>买方Greeks取正</td></tr>
+            </table>
+            <p><strong>Black-Scholes公式（优先级2 fallback）：</strong></p>
+            <div class="formula-box">
+                // 参数<br>
+                S = 标的价格（期货价格）<br>
+                K = 行权价<br>
+                T = DTE / 365.0 &nbsp;&nbsp;// 年化到期时间<br>
+                iv = 隐含波动率（小数）<br>
+                r = 0.03 &nbsp;&nbsp;// 无风险利率（3%）<br>
+                <br>
+                // d1, d2<br>
+                d1 = [ln(S/K) + (r + iv²/2) × T] / (iv × √T)<br>
+                d2 = d1 - iv × √T<br>
+                <br>
+                // N(x) = 标准正态分布累积函数<br>
+                // N'(x) = e^(-x²/2) / √(2π) &nbsp;&nbsp;// 标准正态概率密度函数
+            </div>
+            <p><strong>Delta（Δ）— 标的价格变动敏感度：</strong></p>
+            <table>
+                <tr><th>期权类型</th><th>买方Delta</th><th>卖方Delta（× -1）</th></tr>
+                <tr><td>Call</td><td>N(d1)</td><td>-N(d1)</td></tr>
+                <tr><td>Put</td><td>N(d1) - 1</td><td>1 - N(d1)</td></tr>
+            </table>
+            <p><strong>Gamma（Γ）— Delta变化率（加速度）：</strong></p>
+            <div class="formula-box">Gamma = N'(d1) / (S × iv × √T)</div>
+            <div class="warn-box">
+                ⚠️ <strong>深度虚值+临近到期</strong>：N'(d1) → 0，Gamma → 0（BS模型固有限制）
+            </div>
+            <p><strong>Vega（ν）— 波动率变动敏感度：</strong></p>
+            <div class="formula-box">Vega = S × N'(d1) × √T / 100</div>
+            <p><strong>Theta（θ）— 时间衰减：</strong></p>
+            <div class="formula-box">
+                // Call<br>
+                theta_call = [-S×N'(d1)×iv/(2×√T) - r×K×e^(-rT)×N(d2)] / 365<br>
+                <br>
+                // Put<br>
+                theta_put = [-S×N'(d1)×iv/(2×√T) + r×K×e^(-rT)×N(-d2)] / 365
+            </div>
+            <div class="warn-box">
+                ⚠️ <strong>BS模型在T→0时数值不稳定</strong>：临近到期时N'(d1)→0，第一项消失，卖方Theta符号可能翻转（显示为负数，与实际相反）。<br>
+                <strong>DTE ≤ 2天的Theta仅供参考</strong>，不构成调仓依据。
+            </div>
+            <p><strong>持仓级 vs 每手 Greek：</strong></p>
+            <table>
+                <tr><th>显示方式</th><th>数值</th><th>说明</th></tr>
+                <tr><td>持仓级</td><td>delta × volume × multiplier</td><td>系统当前显示方式</td></tr>
+                <tr><td>每手</td><td>delta（未乘手数）</td><td>文华财经等软件显示方式</td></tr>
+            </table>
+
+            <h3>6.4 浮动盈亏（Float PnL）计算</h3>
+            <p><strong>当前实现：</strong>从positions.json直接读取 <code>float_pnl</code> 字段（手动填写，来自交易软件）。</p>
+            <p><strong>验证公式（参考）：</strong></p>
+            <div class="formula-box">
+                // 卖出期权<br>
+                float_pnl = (open_price - last_price) × volume × 期货公司保证金乘数<br>
+                <br>
+                // 买入期权<br>
+                float_pnl = (last_price - open_price) × volume × 期货公司保证金乘数
+            </div>
+
+            <h3>6.5 ATR偏离度计算</h3>
+            <div class="formula-box">atr_deviation = (current_price - pre_settlement) / atr</div>
+            <table>
+                <tr><th>参数</th><th>来源</th><th>说明</th></tr>
+                <tr><td><code>current_price</code></td><td>TqSdk期货实时价 [R] 或 IV API [S]</td><td>标的当前价格</td></tr>
+                <tr><td><code>pre_settlement</code></td><td>TqSdk <code>quote.pre_settlement</code> [R]</td><td>昨结算价（今日结算参考）</td></tr>
+                <tr><td><code>atr</code></td><td>IV分位接口 <code>atr</code> 字段 [S]</td><td>平均真实波幅（14日）</td></tr>
+            </table>
+
+            <h3>6.6 IV价差（iv_spread）计算</h3>
+            <div class="formula-box">
+                // 对每个品种，找最近月和最远月的IV，计算差值<br>
+                for product in strategy_positions:<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;expiries = {pos["expiry"]: pos["iv"] for pos in positions if iv > 0}<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;if len(expiries) >= 2:<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;near_iv = expiries[min(expiries)]<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;far_iv  = expiries[max(expiries)]<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;iv_spread_values.append(far_iv - near_iv)<br>
+                <br>
+                iv_spread = mean(iv_spread_values) &nbsp;&nbsp;// 策略级平均
+            </div>
+
+            <h3>6.7 风险等级综合判定</h3>
+            <p>综合4个维度，按"最差原则"定级：</p>
+            <table>
+                <tr><th>维度</th><th>正常（1）</th><th>关注（2）</th><th>预警（3）</th><th>紧急（4）</th></tr>
+                <tr><td>保证金使用率</td><td>≤60%</td><td>>60%</td><td>>80%</td><td>>90%</td></tr>
+                <tr><td>IV分位</td><td>≤70%</td><td>>70%</td><td>>80%</td><td>>90%</td></tr>
+                <tr><td>ATR偏离度（绝对值）</td><td>≤1.0</td><td>>1.0</td><td>>1.5</td><td>>2.0</td></tr>
+                <tr><td>最小DTE</td><td>≥5天</td><td>&lt;5天</td><td>&lt;3天</td><td>&lt;1天</td></tr>
+            </table>
+
+            <h2 id="ch7">七、策略分类规则</h2>
+            <p><strong>分类优先级：</strong></p>
+            <pre>P1: positions.json中的"category"字段（最高优先级）
+    ↓ 如果不存在category字段
+P2: config.ini的[strategy_mapping]段（品种级映射）
+    ↓ 如果未配置
+P3: 默认归类为"飞鹰策略"</pre>
+            <p><strong>品种级映射表（config.ini）：</strong></p>
+            <table>
+                <tr><th>品种</th><th>策略类型</th><th>说明</th></tr>
+                <tr><td>CF, y, sc, a1, ni</td><td><strong>飞鹰（eagle）</strong></td><td>跨月双卖双买</td></tr>
+                <tr><td>SH, SM</td><td><strong>单卖（single_sell）</strong></td><td>裸卖期权</td></tr>
+                <tr><td>MA, PX, 1c, ps, ag, fu, sn, br, pg, eb, m, v</td><td><strong>双卖（double_sell）</strong></td><td>双边卖权</td></tr>
+            </table>
+
+            <h2 id="ch8">八、数据质量标注说明</h2>
+            <p>系统在前端界面标注数据来源，格式：<code>[来源标记]</code></p>
+            <table>
+                <tr><th>标记</th><th>含义</th><th>精度</th><th>说明</th></tr>
+                <tr><td><code>[R]</code></td><td>实时行情（Real-time）</td><td>★★★★★</td><td>TqSdk期货/期权实时价（15分钟延迟免费版）</td></tr>
+                <tr><td><code>[S]</code></td><td>静态估算（Static）</td><td>★★★☆☆</td><td>IV分位接口 / positions.json手动填写</td></tr>
+                <tr><td><code>[O]</code></td><td>开盘价fallback（Open）</td><td>★★☆☆☆</td><td>行情断开时使用开盘价</td></tr>
+                <tr><td><code>[U]</code></td><td>未验证（Unknown）</td><td>★☆☆☆☆</td><td>行权价均值兜底（已不常用）</td></tr>
+            </table>
+
+            <h2 id="ch9">九、API接口说明</h2>
+            <p>HTTP服务端口：<code>18099</code>（可在config.ini的[server]段修改）</p>
+            <h3>GET /api/data</h3>
+            <p>返回全部策略的风控数据（JSON格式）。</p>
+            <h3>GET /api/refresh</h3>
+            <p>手动触发刷新（重新读取positions.json + 重新获取行情）。</p>
+            <h3>GET /</h3>
+            <p>返回前端界面（index.html）。</p>
+
+            <h2 id="ch10">十、使用流程说明</h2>
+            <h3>每日更新持仓（标准流程）</h3>
+            <ol>
+                <li>导出交易软件持仓截图（快期/文华等）</li>
+                <li>发送给AI：<code>更新一下XX策略持仓</code>（附截图）</li>
+                <li>AI解析截图 → 对比positions.json → 生成更新后JSON</li>
+                <li>AI自动重启服务（或手动双击<code>一键运行.bat</code>）</li>
+                <li>打开浏览器访问 <code>http://localhost:18099</code> 查看最新数据</li>
+            </ol>
+
+            <h2 id="ch11">十一、前端界面说明</h2>
+            <p><strong>布局结构（V2.0三栏设计）：</strong></p>
+            <pre>
+┌─────────────────────────────────────────────┐
+│              全局状态条（38px高）                    │
+│  策略名称  风险等级灯  Delta Gamma Vega Theta       │
+├──────────┬──────────────────────────────────────┤
+│          │                                       │
+│  左侧导航  │           主内容区                      │
+│  (200px) │    （策略仪表盘 / 持仓明细 / 建议）     │
+│          │                                       │
+└──────────┴──────────────────────────────────────┘</pre>
+            <p><strong>色彩规范：</strong></p>
+            <table>
+                <tr><th>元素</th><th>颜色代码</th><th>说明</th></tr>
+                <tr><td>页面背景</td><td><code>#0B1120</code></td><td>最深蓝黑</td></tr>
+                <tr><td>卡片表面</td><td><code>#151D2E</code></td><td>表面色</td></tr>
+                <tr><td>涨（盈利）</td><td>中国红 <code>#EF4444</code></td><td>红色</td></tr>
+                <tr><td>跌（亏损）</td><td>中国绿 <code>#22C55E</code></td><td>绿色</td></tr>
+                <tr><td>风险正常</td><td><code>#22C55E</code></td><td>绿色</td></tr>
+                <tr><td>风险关注</td><td><code>#F59E0B</code></td><td>黄色</td></tr>
+                <tr><td>风险预警</td><td><code>#F97316</code></td><td>橙色</td></tr>
+                <tr><td>风险紧急</td><td><code>#EF4444</code></td><td>红色</td></tr>
+            </table>
+
+            <h2 id="ch12">十二、常见问题（FAQ）</h2>
+            <h3>Q1：为什么DTE≤2天的期权Greek数值异常？</h3>
+            <p><strong>A：</strong>BS模型在T→0时数学特性不稳定：Gamma → 0（N'(d1)→0），Theta符号可能翻转（利率项主导）。</p>
+            <p><strong>建议</strong>：DTE≤2天不依赖Greek数值，以到期盈亏和是否行权为决策依据。</p>
+            <h3>Q2：系统显示的Theta和文华财经不一致？</h3>
+            <p><strong>A：</strong>两个可能原因：1. <strong>持仓级 vs 每手</strong>：本系统显示持仓级Greek（已乘手数和方向），文华显示每手Greek；2. <strong>IV来源不同</strong>：本系统用TqSdk/BS计算，文华用自家IV。</p>
+            <h3>Q3：如何判断Greeks计算是否正确？</h3>
+            <p><strong>A：</strong>三步验证法：1. <strong>方向检查</strong>：卖出期权delta应为负，gamma/vega应为负，theta应为正；2. <strong>数量级检查</strong>：delta绝对值≤1（持仓级可>1），theta单位：元/天；3. <strong>交叉验证</strong>：与文华/同花顺等软件对比每手Greeks。</p>
+            <h3>Q4：为什么有些持仓的iv=0？</h3>
+            <p><strong>A：</strong>以下情况会导致IV=0：1. TqSdk未获取到期权价格（免费版15分钟延迟，可能返回0）；2. IV分位接口未覆盖该品种；3. BS公式fallback时所有IV估算方法均失败（极少发生）。</p>
+            <h3>Q5：如何添加新的交易品种？</h3>
+            <p><strong>A：</strong>三步操作：1. <strong>更新EXCHANGE_MAP</strong>：在<code>risk_system.py</code>第84-112行添加品种→交易所映射；2. <strong>更新PRODUCT_NAME_MAP</strong>：添加品种中文名称；3. <strong>更新config.ini</strong>：在<code>[strategy_mapping]</code>段添加品种→策略映射。</p>
+            <h3>Q6：服务启动后浏览器打不开？</h3>
+            <p><strong>A：</strong>排查步骤：1. 检查端口是否被占用（<code>netstat -ano | findstr 18099</code>）；2. 检查python进程是否running（<code>tasklist | findstr python</code>）；3. 手动测试HTTP服务（<code>curl http://localhost:18099/</code>）；4. 查看risk_system.py启动日志（控制台窗口）。</p>
+
+            <hr style="border-color:var(--border); margin:24px 0;">
+            <p style="font-size:11px; color:var(--text3); text-align:center;">
+                版本：V2.1 &nbsp;|&nbsp; 最后更新：2026-06-11 &nbsp;|&nbsp; 维护：小风（AI助手）<br>
+                项目路径：<code>C:\Users\DELL\WorkBuddy\期权持仓风控系统</code>
+            </p>
+        </div>
+    </div>
+
+    <!-- 系统日志面板 -->
+    <div class="log-panel" id="logPanel" style="display:none;">
+        <div class="log-header">
+            <span class="log-title">📋 系统日志</span>
+            <div class="log-controls">
+                <select id="logLevelFilter" onchange="fetchLogs()">
+                    <option value="ALL">全部</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="DEBUG">DEBUG</option>
+                </select>
+                <button class="btn-refresh" onclick="fetchLogs()">刷新</button>
+                <button class="btn-close" onclick="toggleLogs()">✕</button>
+            </div>
+        </div>
+        <div class="log-content" id="logContent">
+            <div class="log-loading">正在加载日志...</div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // 后端地址配置（支持URL参数 ?api=https://your-backend.com:18099）
+        // ============================================
+        const _urlParams = new URLSearchParams(window.location.search);
+        const API_BASE = _urlParams.get('api') || '';  // 默认空（相对路径，本地使用）
+        // ============================================
+
+        // ============================================
+        // 全局状态
+        // ============================================
+        let currentData = null;
+        let refreshInterval = null;
+        let countdownInterval = null;
+        let nextRefreshTime = null;
+        let isRefreshing = false;
+        let currentPage = 'eagle';
+        const REFRESH_INTERVAL_MS = 900000; // 15分钟
+
+        // ============================================
+        // 侧边栏导航
+        // ============================================
+        document.querySelectorAll('.sidebar-item[data-page]').forEach(item => {
+            item.addEventListener('click', () => {
+                const page = item.dataset.page;
+                currentPage = page;
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                if (currentData) renderPage(page);
+            });
+        });
+
+        function renderPage(page) {
+            currentPage = page;
+            if (!currentData) return;
+            const main = document.getElementById('main-content');
+            switch (page) {
+                case 'eagle':
+                    main.innerHTML = renderStrategyPage('eagle', '飞鹰策略', currentData.eagle || {});
+                    bindFilterTabs('eagle');
+                    break;
+                case 'single_sell':
+                    main.innerHTML = renderStrategyPage('single_sell', '单卖策略', currentData.single_sell || {});
+                    bindFilterTabs('single_sell');
+                    break;
+                case 'double_sell':
+                    main.innerHTML = renderStrategyPage('double_sell', '双卖策略', currentData.double_sell || {});
+                    bindFilterTabs('double_sell');
+                    break;
+                case 'summary':
+                    main.innerHTML = renderSummaryPage(currentData.summary || {});
+                    break;
+            }
+        }
+
+        // ============================================
+        // 数据加载
+        // ============================================
+        async function loadData() {
+            try {
+                const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
+                const data = await response.json();
+                currentData = data;
+                updateStatusBar(data);
+                updateSidebarIndicators(data);
+                renderPage(currentPage);
+            } catch (error) {
+                console.error('数据加载失败:', error);
+                document.getElementById('main-content').innerHTML =
+                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查后端服务</div>';
+            }
+        }
+
+        // ============================================
+        // 全局状态条更新
+        // ============================================
+        function updateStatusBar(data) {
+            const s = data.summary || {};
+            const pnl = s.total_float_pnl || 0;
+
+            document.getElementById('statusPnl').textContent = (pnl >= 0 ? '+' : '') + formatMoney(pnl);
+            document.getElementById('statusPnl').className = 'status-value ' + (pnl >= 0 ? 'up' : 'down');
+
+            const marginTotal = s.total_margin || 0;
+            document.getElementById('statusMargin').textContent = formatMoney(marginTotal);
+
+            document.getElementById('statusDelta').textContent = (s.delta || 0).toFixed(2);
+            document.getElementById('statusDelta').className = 'status-value ' + ((s.delta || 0) >= 0 ? 'up' : 'down');
+
+            document.getElementById('statusTheta').textContent = (s.theta || 0).toFixed(0);
+            document.getElementById('statusTheta').className = 'status-value ' + ((s.theta || 0) >= 0 ? 'up' : 'down');
+
+            const level = s.risk_level || 1;
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            dot.className = 'status-dot';
+            if (level >= 4) { dot.classList.add('critical'); txt.textContent = '高危'; }
+            else if (level >= 3) { dot.classList.add('warn'); txt.textContent = '预警'; }
+            else { dot.classList.add('ok'); txt.textContent = '正常'; }
+
+            if (data.timestamp) {
+                // 显示数据时间戳 + 下次刷新倒计时
+                document.getElementById('statusTime').textContent = data.timestamp;
+                // 重置下次刷新时间
+                nextRefreshTime = Date.now() + REFRESH_INTERVAL_MS;
+                if (!countdownInterval) {
+                    countdownInterval = setInterval(updateCountdown, 1000);
+                }
+            }
+
+            updateAccountSummary(data);
+        }
+
+        // ============================================
+        // 下次刷新倒计时
+        // ============================================
+        function updateCountdown() {
+            if (!nextRefreshTime) return;
+            const now = Date.now();
+            const diff = nextRefreshTime - now;
+            const el = document.getElementById('statusTime');
+            if (diff <= 0) {
+                el.textContent = '刷新中...';
+                return;
+            }
+            const minutes = Math.floor(diff / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            const baseText = currentData && currentData.timestamp ? currentData.timestamp.split(' ')[1] || currentData.timestamp : '';
+            el.textContent = baseText + ' (下次' + minutes + ':' + String(seconds).padStart(2, '0') + ')';
+        }
+
+        function updateAccountSummary(data) {
+            const s = data.summary || {};
+            const totalMargin = s.total_margin || 0;
+
+            const totalAsset = 385200;
+            const available = totalAsset - totalMargin;
+            const ratio = totalAsset > 0 ? (totalMargin / totalAsset * 100) : 0;
+
+            document.getElementById('acctTotal').textContent = formatMoney(totalAsset);
+            document.getElementById('acctUsed').textContent = formatMoney(totalMargin);
+            document.getElementById('acctAvail').textContent = formatMoney(Math.max(0, available));
+
+            const bar = document.getElementById('acctBar');
+            bar.style.width = Math.min(ratio, 100) + '%';
+            bar.className = 'mini-progress-fill';
+            if (ratio > 90) bar.classList.add('danger');
+            else if (ratio > 80) bar.classList.add('warn');
+            else bar.classList.add('safe');
+        }
+
+        function updateSidebarIndicators(data) {
+            const strategies = [
+                { key: 'eagle', id: 'ind-eagle' },
+                { key: 'single_sell', id: 'ind-single_sell' },
+                { key: 'double_sell', id: 'ind-double_sell' }
+            ];
+            strategies.forEach(st => {
+                const el = document.getElementById(st.id);
+                if (!el) return;
+                const d = data[st.key] || {};
+                const m = d.metrics || {};
+                const level = m.risk_level || 1;
+                el.className = 'indicator';
+                if (level >= 4) el.classList.add('critical');
+                else if (level >= 3) el.classList.add('warn');
+                else el.classList.add('ok');
+            });
+        }
+
+        // ============================================
+        // 手动刷新
+        // ============================================
+        async function manualRefresh() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+            const btn = document.getElementById('btnRefresh');
+            const orig = btn.textContent;
+            btn.classList.add('spinning');
+            btn.textContent = '刷新中...';
+
+            try {
+                const resp = await fetch(API_BASE + '/api/refresh?t=' + Date.now());
+                const result = await resp.json();
+                if (result.success) {
+                    await loadData();
+                    btn.textContent = '已刷新';
+                    setTimeout(() => { btn.textContent = orig; }, 1500);
+                } else {
+                    btn.textContent = '失败';
+                    btn.style.background = '#EF4444';
+                    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+                }
+            } catch (e) {
+                btn.textContent = '错误';
+                btn.style.background = '#EF4444';
+                setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+            } finally {
+                isRefreshing = false;
+                btn.classList.remove('spinning');
+            }
+        }
+
+        // ============================================
+        // 策略页面渲染（仪表盘视图）
+        // ============================================
+        function renderStrategyPage(strategyId, strategyName, data) {
+            const metrics = data.metrics || {};
+            const positions = data.positions || [];
+            const riskPositions = data.risk_positions || [];
+            const advice = data.advice || [];
+            const productGreeks = data.product_greeks || [];
+
+            if (positions.length === 0) {
+                return '<div class="empty-state">暂无持仓数据</div>';
+            }
+
+            const riskLevel = metrics.risk_level || 1;
+            const riskLabel = metrics.risk_label || '正常';
+            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
+
+            const sellPositions = positions.filter(p => p.direction === '空');
+            const buyPositions = positions.filter(p => p.direction === '多');
+
+            return `
+                <!-- 策略标题 -->
+                <div class="section-header">
+                    <span class="section-title">${strategyName} · 风控仪表盘</span>
+                    <span class="section-badge">${positions.length}笔持仓</span>
+                </div>
+
+                <!-- KPI行 -->
+                <div class="kpi-row">
+                    <div class="risk-card">
+                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
+                        <div class="risk-info">
+                            <h3>${riskLabel}</h3>
+                            <p>${getRiskSummary(metrics, riskLevel)}</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">浮动盈亏</div>
+                        <div class="kpi-value ${(metrics.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(metrics.total_float_pnl || 0)}</div>
+                        <div class="kpi-sub">${positions.length}笔 · ${sellPositions.length}卖${buyPositions.length}买</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">保证金使用率</div>
+                        <div class="kpi-value">${(metrics.margin_ratio || 0).toFixed(1)}%</div>
+                        <div class="mini-progress" style="margin-top:8px;">
+                            <div class="mini-progress-fill ${(metrics.margin_ratio || 0) > 90 ? 'danger' : (metrics.margin_ratio || 0) > 80 ? 'warn' : 'safe'}" style="width:${Math.min(metrics.margin_ratio || 0, 100)}%"></div>
+                        </div>
+                        <div class="kpi-sub" style="margin-top:6px;">占用 ${formatMoney(metrics.total_margin || 0)}</div>
+                    </div>
+                </div>
+
+                <!-- 希腊字母 -->
+                <div class="section-header"><span class="section-title">希腊字母</span></div>
+                <div class="greeks-grid">
+                    <div class="greek-card">
+                        <div class="greek-symbol">Delta</div>
+                        <div class="greek-number ${(metrics.delta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.delta || 0).toFixed(4)}</div>
+                        <div class="greek-desc">标的价格变动1元<br>组合价值变动金额</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Gamma</div>
+                        <div class="greek-number ${(metrics.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.gamma || 0).toFixed(4)}</div>
+                        <div class="greek-desc">Delta对标的价格<br>变化的敏感度</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Vega</div>
+                        <div class="greek-number ${(metrics.vega || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.vega || 0).toFixed(2)}</div>
+                        <div class="greek-desc">IV变动1%<br>组合价值变动金额</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Theta</div>
+                        <div class="greek-number ${(metrics.theta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.theta || 0).toFixed(2)}</div>
+                        <div class="greek-desc">时间流逝1天<br>组合价值变动金额</div>
+                    </div>
+                </div>
+
+                <!-- IV指标 -->
+                <div class="iv-row">
+                    <div class="iv-card">
+                        <div class="iv-label">当前IV</div>
+                        <div class="iv-value low">${(metrics.current_iv || 0).toFixed(1)}%</div>
+                    </div>
+                    <div class="iv-card">
+                        <div class="iv-label">IV分位</div>
+                        <div class="iv-value ${(metrics.iv_percentile || 0) > 80 ? 'high' : (metrics.iv_percentile || 0) > 70 ? 'mid' : 'low'}">${(metrics.iv_percentile || 0).toFixed(1)}%</div>
+                    </div>
+                    <div class="iv-card">
+                        <div class="iv-label">近远月IV价差</div>
+                        <div class="iv-value low">${(metrics.iv_spread || 0).toFixed(2)}%</div>
+                    </div>
+                </div>
+
+                <!-- 品种希腊字母 -->
+                ${productGreeks.length > 0 ? `
+                <div class="section-header"><span class="section-title">品种希腊字母</span><span class="section-badge">${productGreeks.length}个品种</span></div>
+                <div class="product-strip">
+                    ${productGreeks.map(pg => `
+                        <div class="product-chip">
+                            <div class="name">${pg.product_name || pg.product}</div>
+                            <div class="delta ${(pg.delta || 0) >= 0 ? 'pos' : 'neg'}">Δ ${(pg.delta || 0).toFixed(2)}</div>
+                            <div class="gamma-val">Γ ${(pg.gamma || 0).toFixed(3)} · ν ${(pg.vega || 0).toFixed(0)}</div>
+                            <div class="theta-val"><span class="t-label">θ </span><span class="t-num ${(pg.theta || 0) >= 0 ? 'pos' : 'neg'}">${(pg.theta || 0).toFixed(1)}</span></div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 持仓明细 -->
+                <div class="data-section">
+                    <div class="data-section-header">
+                        <span class="section-title" style="font-size:13px;">持仓明细</span>
+                        <div class="filter-tabs" data-strategy="${strategyId}">
+                            <button class="filter-tab active" data-filter="all">全部 (${positions.length})</button>
+                            <button class="filter-tab" data-filter="sell">卖出 (${sellPositions.length})</button>
+                            <button class="filter-tab" data-filter="buy">买入 (${buyPositions.length})</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="posTable-${strategyId}">
+                            <thead>
+                                <tr>
+                                    <th>品种</th>
+                                    <th>合约代码</th>
+                                    <th>方向</th>
+                                    <th>手数</th>
+                                    <th>开仓均价</th>
+                                    <th>最新价</th>
+                                    <th>浮动盈亏</th>
+                                    <th>盈亏%</th>
+                                    <th>保证金</th>
+                                    <th>保证金%</th>
+                                    <th>DTE</th>
+                                    <th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>风险</th>
+                                </tr>
+                            </thead>
+                            <tbody id="posBody-${strategyId}">
+                                ${positions.map(p => renderPositionRow(p)).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 风险异常清单 -->
+                ${riskPositions.length > 0 ? `
+                <div class="section-header"><span class="section-title">风险异常</span><span class="section-badge">${riskPositions.length}笔</span></div>
+                <div class="risk-list">
+                    ${riskPositions.map(p => {
+                        const lvl = p.risk_level || 2;
+                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
+                        return `
+                            <div class="risk-item ${lvlClass}">
+                                <div class="risk-item-info">
+                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
+                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
+                                </div>
+                                <div class="risk-item-metrics">
+                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
+                                    <span>IV ${p.iv_percentile || '-'}%</span>
+                                    <span>ATR ${p.atr_deviation || '-'}x</span>
+                                    <span>DTE ${p.dte || '-'}天</span>
+                                </div>
+                                <span class="tag ${lvl >= 4 ? 'tag-danger' : lvl >= 3 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 调仓建议 -->
+                ${advice.length > 0 ? `
+                <div class="section-header"><span class="section-title">调仓建议</span><span class="section-badge">${advice.length}条</span></div>
+                <div class="advice-list">
+                    ${advice.map(a => `
+                        <div class="advice-item ${a.priority || '正常'}">
+                            <div class="advice-header">
+                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
+                                <span class="advice-action">${a.action || '维持'}</span>
+                            </div>
+                            <div class="advice-reason">${a.reason || ''}</div>
+                            <div class="advice-detail">${a.detail || ''}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            `;
+        }
+
+        function renderPositionRow(p) {
+            const riskLevel = p.risk_level || 1;
+            const rowClass = riskLevel >= 4 ? 'row-danger' : riskLevel >= 3 ? 'row-warn' : '';
+            const dirColor = p.direction === '多' ? 'color:var(--red);' : 'color:var(--green);';
+            const tagClass = riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok';
+            const fmt4 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(4);
+            const fmt2 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(2);
+            // 数据来源标记
+            let sourceMark = '';
+            if (p.greeks_source === 'tqsdk') {
+                sourceMark = '<span style="color:#10B981;font-size:9px;margin-left:2px;">●TqSdk</span>';
+            } else if (p.greeks_source && p.greeks_source.startsWith('database')) {
+                sourceMark = '<span style="color:#3B82F6;font-size:9px;margin-left:2px;">●DB</span>';
+            } else if (p.greeks_source === 'bs_estimate') {
+                sourceMark = '<span style="color:#F59E0B;font-size:9px;margin-left:2px;">●估算</span>';
+            }
+            return `
+                <tr class="${rowClass}" data-direction="${p.direction === '空' ? 'sell' : 'buy'}">
+                    <td><strong>${p.product_name || p.product}</strong></td>
+                    <td style="color:var(--cyan);">${p.contract}</td>
+                    <td class="text-center"><span style="${dirColor}">${p.direction}</span></td>
+                    <td class="num">${p.volume}</td>
+                    <td class="num">${p.open_price}</td>
+                    <td class="num">${p.last_price || '-'}</td>
+                    <td class="num ${p.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(p.float_pnl)}</td>
+                    <td class="num ${p.pnl_ratio >= 0 ? 'pos' : 'neg'}">${p.pnl_ratio || 0}%</td>
+                    <td class="num">${formatMoney(p.margin)}</td>
+                    <td class="num">${p.margin_ratio || 0}%</td>
+                    <td class="num">${p.dte}天</td>
+                    <td class="num" style="font-size:11px;">${fmt4(p.delta || 0)}${sourceMark}</td>
+                    <td class="num" style="font-size:11px;">${fmt4(p.gamma || 0)}</td>
+                    <td class="num" style="font-size:11px;">${fmt2(p.vega || 0)}</td>
+                    <td class="num" style="font-size:11px;">${fmt2(p.theta || 0)}</td>
+                    <td class="text-center"><span class="tag ${tagClass}">${p.risk_label || '正常'}</span></td>
+                </tr>
+            `;
+        }
+
+        // ============================================
+        // 持仓表过滤
+        // ============================================
+        function bindFilterTabs(strategyId) {
+            const tabs = document.querySelectorAll(`.filter-tabs[data-strategy="${strategyId}"] .filter-tab`);
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const filter = tab.dataset.filter;
+                    const rows = document.querySelectorAll(`#posTable-${strategyId} tbody tr`);
+                    rows.forEach(row => {
+                        if (filter === 'all') {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = row.dataset.direction === filter ? '' : 'none';
+                        }
+                    });
+                });
+            });
+        }
+
+        // ============================================
+        // 汇总页渲染
+        // ============================================
+        function renderSummaryPage(data) {
+            if (!data) return '<div class="empty-state">暂无数据</div>';
+
+            const comparison = data.strategy_comparison || [];
+            const allRisk = data.all_risk_positions || [];
+            const concentration = data.concentration || [];
+            const globalAdvice = data.global_advice || [];
+
+            const riskLevel = data.risk_level || 1;
+            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
+
+            return `
+                <div class="section-header">
+                    <span class="section-title">全策略汇总</span>
+                    <span class="section-badge">3个策略 · ${data.total_volume || 0}手</span>
+                </div>
+
+                <!-- KPI行 -->
+                <div class="kpi-row">
+                    <div class="risk-card">
+                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
+                        <div class="risk-info">
+                            <h3>全局风险：${data.risk_label || '正常'}</h3>
+                            <p>保证金率 ${(data.total_margin / 385200 * 100).toFixed(1)}% · 3策略在线</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">总浮动盈亏</div>
+                        <div class="kpi-value ${(data.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl || 0)}</div>
+                        <div class="kpi-sub">总持仓 ${data.total_volume || 0}手</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">总占用保证金</div>
+                        <div class="kpi-value">${formatMoney(data.total_margin || 0)}</div>
+                        <div class="kpi-sub">组合Delta ${(data.delta || 0).toFixed(2)} · Theta ${(data.theta || 0).toFixed(0)}</div>
+                    </div>
+                </div>
+
+                <!-- 组合希腊字母 -->
+                <div class="section-header"><span class="section-title">组合希腊字母</span><span class="section-badge">全账户</span></div>
+                <div class="greeks-grid">
+                    <div class="greek-card">
+                        <div class="greek-symbol">Delta</div>
+                        <div class="greek-number ${(data.delta || 0) >= 0 ? 'pos' : 'neg'}">${(data.delta || 0).toFixed(4)}</div>
+                        <div class="greek-desc">标的价格变动1元<br>组合价值变动¥${Math.abs(data.delta || 0).toFixed(2)}</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Gamma</div>
+                        <div class="greek-number ${(data.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(data.gamma || 0).toFixed(4)}</div>
+                        <div class="greek-desc">Delta变化速度<br>每1元标的变化</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Vega</div>
+                        <div class="greek-number ${(data.vega || 0) >= 0 ? 'pos' : 'neg'}">${(data.vega || 0).toFixed(2)}</div>
+                        <div class="greek-desc">IV变动1%<br>组合价值变动¥${Math.abs(data.vega || 0).toFixed(0)}</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Theta</div>
+                        <div class="greek-number ${(data.theta || 0) >= 0 ? 'pos' : 'neg'}">${(data.theta || 0).toFixed(2)}</div>
+                        <div class="greek-desc">时间流逝1天<br>组合收入¥${Math.abs(data.theta || 0).toFixed(0)}</div>
+                    </div>
+                </div>
+
+                <!-- 策略对比 -->
+                ${comparison.length > 0 ? `
+                <div class="section-header"><span class="section-title">策略对比</span></div>
+                <div class="data-section">
+                    <div style="overflow-x:auto;">
+                        <table class="data-table compare-table">
+                            <thead>
+                                <tr>
+                                    <th>策略</th><th>手数</th><th>浮动盈亏</th><th>保证金</th>
+                                    <th>保证金%</th><th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>风险</th><th>风险点</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${comparison.map(s => `
+                                    <tr>
+                                        <td>${s.name}</td>
+                                        <td class="num">${s.volume}</td>
+                                        <td class="num ${s.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(s.float_pnl)}</td>
+                                        <td class="num">${formatMoney(s.margin)}</td>
+                                        <td class="num">${s.margin_ratio}%</td>
+                                        <td class="num ${(s.delta||0) >= 0 ? 'pos' : 'neg'}">${((s.delta||0)).toFixed(4)}</td>
+                                        <td class="num ${(s.gamma||0) >= 0 ? 'pos' : 'neg'}">${((s.gamma||0)).toFixed(4)}</td>
+                                        <td class="num ${(s.vega||0) >= 0 ? 'pos' : 'neg'}">${((s.vega||0)).toFixed(2)}</td>
+                                        <td class="num ${(s.theta||0) >= 0 ? 'pos' : 'neg'}">${((s.theta||0)).toFixed(2)}</td>
+                                        <td class="text-center"><span class="tag ${(s.risk_level||1) >= 3 ? 'tag-danger' : (s.risk_level||1) >= 2 ? 'tag-warn' : 'tag-ok'}">${s.risk_label}</span></td>
+                                        <td style="font-size:11px;color:var(--text2);">${(s.risk_points || []).join(', ')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td>组合汇总</td>
+                                    <td class="num">${data.total_volume || 0}</td>
+                                    <td class="num ${(data.total_float_pnl||0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl||0)}</td>
+                                    <td class="num">${formatMoney(data.total_margin||0)}</td>
+                                    <td class="num">-</td>
+                                    <td class="num ${(data.delta||0) >= 0 ? 'pos' : 'neg'}">${(data.delta||0).toFixed(4)}</td>
+                                    <td class="num ${(data.gamma||0) >= 0 ? 'pos' : 'neg'}">${(data.gamma||0).toFixed(4)}</td>
+                                    <td class="num ${(data.vega||0) >= 0 ? 'pos' : 'neg'}">${(data.vega||0).toFixed(2)}</td>
+                                    <td class="num ${(data.theta||0) >= 0 ? 'pos' : 'neg'}">${(data.theta||0).toFixed(2)}</td>
+                                    <td class="text-center"><span class="tag ${riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok'}">${data.risk_label||'正常'}</span></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- 高风险合约 -->
+                ${allRisk.length > 0 ? `
+                <div class="section-header"><span class="section-title">全市场高风险合约</span><span class="section-badge">${allRisk.length}笔</span></div>
+                <div class="risk-list">
+                    ${allRisk.map(p => {
+                        const lvl = p.risk_level || 2;
+                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
+                        return `
+                            <div class="risk-item ${lvlClass}">
+                                <div class="risk-item-info">
+                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
+                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
+                                </div>
+                                <div class="risk-item-metrics">
+                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
+                                    <span>IV ${p.iv_percentile || '-'}%</span>
+                                    <span>ATR ${p.atr_deviation || '-'}x</span>
+                                    <span>DTE ${p.dte || '-'}天</span>
+                                </div>
+                                <span class="tag ${lvl >= 4 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 集中度 -->
+                ${concentration.length > 0 ? `
+                <div class="section-header"><span class="section-title">仓位集中度</span></div>
+                <div class="data-section">
+                    <table class="data-table">
+                        <thead><tr><th>品种</th><th>手数</th><th>保证金</th><th>占比</th><th>分布</th></tr></thead>
+                        <tbody>
+                            ${concentration.map(c => `
+                                <tr ${c.risk ? 'class="row-danger"' : ''}>
+                                    <td><strong>${c.product_name}</strong> (${c.product})</td>
+                                    <td class="num">${c.volume}</td>
+                                    <td class="num">${formatMoney(c.margin)}</td>
+                                    <td class="num ${c.risk ? 'pos' : ''}">${c.ratio}%</td>
+                                    <td style="width:180px;">
+                                        <div class="conc-bar">
+                                            <div class="conc-fill ${c.risk ? 'high' : ''}" style="width:${Math.min(c.ratio, 100)}%"></div>
+                                            <div class="conc-text">${c.ratio}%</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+
+                <!-- 全局建议 -->
+                ${globalAdvice.length > 0 ? `
+                <div class="section-header"><span class="section-title">全局操作建议</span></div>
+                <div class="advice-list">
+                    ${globalAdvice.map(a => `
+                        <div class="advice-item ${a.priority || '正常'}">
+                            <div class="advice-header">
+                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
+                                <span class="advice-action">${a.action || '维持'}</span>
+                            </div>
+                            <div class="advice-reason">${a.reason || ''}</div>
+                            <div class="advice-detail">${a.detail || ''}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // ============================================
+        // 工具函数
+        // ============================================
+        function formatMoney(num) {
+            if (num === undefined || num === null) return '-';
+            const n = Number(num);
+            if (isNaN(n)) return '-';
+            const sign = n >= 0 ? '' : '';
+            const abs = Math.abs(n);
+            if (abs >= 100000000) return sign + (abs / 100000000).toFixed(2) + '亿';
+            if (abs >= 10000) return sign + (abs / 10000).toFixed(2) + '万';
+            if (abs >= 1000) return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function getRiskSummary(metrics, level) {
+            if (level >= 4) return '存在高危指标，需立即处理';
+            if (level >= 3) return '存在预警信号，请尽快审查';
+            if (level >= 2) return '存在关注指标，持续监控中';
+            return '所有指标安全，可继续持有';
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpOverlay').classList.toggle('show');
+        }
+
+        // ============================================
+        // 说明书弹窗
+        // ============================================
+        function toggleDoc() {
+            document.getElementById('docOverlay').classList.toggle('show');
+        }
+
+        // ============================================
+        // 初始化
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            refreshInterval = setInterval(loadData, REFRESH_INTERVAL_MS);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) clearInterval(refreshInterval);
+            if (countdownInterval) clearInterval(countdownInterval);
+        });
+
+        // ============================================
+        // 系统日志功能
+        // ============================================
+        let logPanelOpen = false;
+        let logRefreshInterval = null;
+
+        function toggleLogs() {
+            const panel = document.getElementById('logPanel');
+            logPanelOpen = !logPanelOpen;
+            panel.style.display = logPanelOpen ? 'flex' : 'none';
+            if (logPanelOpen) {
+                fetchLogs();
+                logRefreshInterval = setInterval(fetchLogs, 3000);
+            } else {
+                if (logRefreshInterval) { clearInterval(logRefreshInterval); logRefreshInterval = null; }
+            }
+        }
+
+        function fetchLogs() {
+            const level = document.getElementById('logLevelFilter').value;
+            fetch(`${API_BASE}/api/logs?level=${level}`)
+                .then(r => r.json())
+                .then(logs => displayLogs(logs))
+                .catch(err => {
+                    document.getElementById('logContent').innerHTML = `<div class="log-entry log-ERROR"><span class="log-message">日志加载失败: ${err}</span></div>`;
+                });
+        }
+
+        function displayLogs(logs) {
+            const content = document.getElementById('logContent');
+            if (!logs || logs.length === 0) {
+                content.innerHTML = '<div class="log-loading">暂无日志</div>';
+                return;
+            }
+            const html = logs.reverse().map(log =>
+                `<div class="log-entry log-${log.level}">
+                    <span class="log-timestamp">${log.timestamp}</span>
+                    <span class="log-level">[${log.level}]</span>
+                    <span class="log-message">${escapeHtml(log.message)}</span>
+                </div>`
+            ).join('');
+            content.innerHTML = html;
+            content.scrollTop = 0;
+        }
+
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+    </script>
+</body>
+</html>
