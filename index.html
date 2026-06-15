@@ -1475,12 +1475,21 @@ P3: 默认归类为"飞鹰策略"</pre>
         }
 
         // ============================================
-        // 数据加载
+        // 数据加载（双模式：API模式 / 静态数据文件模式）
         // ============================================
         async function loadData() {
             try {
-                const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
-                const data = await response.json();
+                let data;
+                if (API_BASE) {
+                    // API模式：连接后端服务
+                    const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
+                    data = await response.json();
+                } else {
+                    // 静态模式：读取 data.json（GitHub Pages / 离线查看）
+                    const resp = await fetch('data.json?t=' + Date.now());
+                    if (!resp.ok) throw new Error('data.json 不存在');
+                    data = await resp.json();
+                }
                 currentData = data;
                 updateStatusBar(data);
                 updateSidebarIndicators(data);
@@ -1601,17 +1610,18 @@ P3: 默认归类为"飞鹰策略"</pre>
             btn.textContent = '刷新中...';
 
             try {
-                const resp = await fetch(API_BASE + '/api/refresh?t=' + Date.now());
-                const result = await resp.json();
-                if (result.success) {
-                    await loadData();
-                    btn.textContent = '已刷新';
-                    setTimeout(() => { btn.textContent = orig; }, 1500);
-                } else {
-                    btn.textContent = '失败';
-                    btn.style.background = '#EF4444';
-                    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+                if (API_BASE) {
+                    // API模式：触发后端刷新
+                    const resp = await fetch(API_BASE + '/api/refresh?t=' + Date.now());
+                    const result = await resp.json();
+                    if (result.success) {
+                        await loadData();
+                    } else { throw new Error(result.message || '刷新失败'); }
                 }
+                // 静态模式：重新加载 data.json
+                await loadData();
+                btn.textContent = '已刷新';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
             } catch (e) {
                 btn.textContent = '错误';
                 btn.style.background = '#EF4444';
