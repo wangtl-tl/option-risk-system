@@ -1475,20 +1475,30 @@ P3: 默认归类为"飞鹰策略"</pre>
         }
 
         // ============================================
-        // 数据加载（双模式：API模式 / 静态数据文件模式）
+        // 数据加载（三模式：API模式 / 静态文件 / GitHub API Fallback）
         // ============================================
         async function loadData() {
             try {
                 let data;
                 if (API_BASE) {
-                    // API模式：连接后端服务
+                    // 模式1：API模式 — 连接后端服务
                     const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
                     data = await response.json();
                 } else {
-                    // 静态模式：读取 data.json（GitHub Pages / 离线查看）
-                    const resp = await fetch('data.json?t=' + Date.now());
-                    if (!resp.ok) throw new Error('data.json 不存在');
-                    data = await resp.json();
+                    // 模式2/3：静态模式 — 先尝试本地 data.json，失败则用 GitHub API
+                    let resp = await fetch('data.json?t=' + Date.now()).catch(() => null);
+                    if (resp && resp.ok) {
+                        data = await resp.json();
+                    } else {
+                        // Fallback: 从 GitHub API 读取 data.json
+                        const repoPath = window.location.pathname.replace(/\/$/, '').split('/').slice(0, -1).join('/') || '';
+                        const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
+                        const ghResp = await fetch(ghRawUrl, {
+                            headers: { 'Accept': 'application/vnd.github.v3.raw' }
+                        });
+                        if (!ghResp.ok) throw new Error('数据源不可用');
+                        data = await ghResp.json();
+                    }
                 }
                 currentData = data;
                 updateStatusBar(data);
@@ -1497,7 +1507,7 @@ P3: 默认归类为"飞鹰策略"</pre>
             } catch (error) {
                 console.error('数据加载失败:', error);
                 document.getElementById('main-content').innerHTML =
-                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查后端服务</div>';
+                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查网络或后端服务</div>';
             }
         }
 
