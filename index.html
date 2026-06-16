@@ -1434,6 +1434,7 @@ P3: 默认归类为"飞鹰策略"</pre>
         let refreshInterval = null;
         let countdownInterval = null;
         let nextRefreshTime = null;
+        let isStaticMode = false;  // 标记是否为静态数据模式（GitHub Pages）
         let isRefreshing = false;
         let currentPage = 'eagle';
         const REFRESH_INTERVAL_MS = 900000; // 15分钟（与后端数据刷新频率对齐）
@@ -1481,9 +1482,10 @@ P3: 默认归类为"飞鹰策略"</pre>
         async function loadData() {
             try {
                 let data;
-                // GitHub Pages 模式：直接使用内嵌数据
+                // GitHub Pages 模式：直接使用内嵌数据（静态模式）
                 if (typeof EMBEDDED_DATA !== 'undefined') {
                     data = EMBEDDED_DATA;
+                    isStaticMode = true;  // 标记静态模式，倒计时显示[静态]而非假倒计时
                 } else {
                     // 保底：尝试从 GitHub API 读取 data.json
                     const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
@@ -1546,20 +1548,30 @@ P3: 默认归类为"飞鹰策略"</pre>
         }
 
         // ============================================
-        // 下次刷新倒计时
+        // 下次刷新倒计时（静态模式显示部署时间）
         // ============================================
         function updateCountdown() {
+            const el = document.getElementById('statusTime');
+            if (!currentData || !currentData.timestamp) return;
+
+            const baseText = currentData.timestamp.split(' ')[1] || currentData.timestamp;
+
+            // 静态模式：显示部署时间，不显示倒计时
+            if (isStaticMode) {
+                el.textContent = baseText + ' [静态]';
+                return;
+            }
+
+            // 动态模式：显示倒计时
             if (!nextRefreshTime) return;
             const now = Date.now();
             const diff = nextRefreshTime - now;
-            const el = document.getElementById('statusTime');
             if (diff <= 0) {
-                el.textContent = '刷新中...';
+                el.textContent = baseText + ' (刷新中...)';
                 return;
             }
             const minutes = Math.floor(diff / 60000);
             const seconds = Math.floor((diff % 60000) / 1000);
-            const baseText = currentData && currentData.timestamp ? currentData.timestamp.split(' ')[1] || currentData.timestamp : '';
             el.textContent = baseText + ' (下次' + minutes + ':' + String(seconds).padStart(2, '0') + ')';
         }
 
@@ -2123,7 +2135,10 @@ P3: 默认归类为"飞鹰策略"</pre>
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
             loadData();
-            refreshInterval = setInterval(loadData, REFRESH_INTERVAL_MS);
+            // 仅动态模式下启动自动刷新（静态GitHub Pages无需轮询）
+            refreshInterval = setInterval(() => {
+                if (!isStaticMode) loadData();
+            }, REFRESH_INTERVAL_MS);
         });
 
         window.addEventListener('beforeunload', () => {
@@ -2185,10 +2200,10 @@ P3: 默认归类为"飞鹰策略"</pre>
     </script>
 
 <script>
-// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 22:14）
-// 数据时间: 2026-06-16 22:14:30
+// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 23:13）
+// 数据时间: 2026-06-16 23:13:12
 const EMBEDDED_DATA = {
-  "timestamp": "2026-06-16 22:14:30",
+  "timestamp": "2026-06-16 23:13:12",
   "eagle": {
     "positions": [
       {
@@ -2203,11 +2218,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 23,
         "open_price": 458.0,
-        "last_price": 266.0,
-        "float_pnl": -22080.0,
+        "last_price": 250.0,
+        "float_pnl": -23920.0,
         "margin": 0.0,
         "cost": 10534.0,
-        "pnl_ratio": -209.61,
+        "pnl_ratio": -227.07,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-15",
         "price_source": "tqsdk",
@@ -2232,7 +2247,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2248,7 +2263,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16070.0
+        "underlying_price": 16060.0
       },
       {
         "contract": "MA608P2800",
@@ -2262,11 +2277,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 48,
         "open_price": 110.0,
-        "last_price": 99.5,
-        "float_pnl": 5040.0,
+        "last_price": 108.0,
+        "float_pnl": 960.0,
         "margin": 176721.6,
         "cost": 176721.6,
-        "pnl_ratio": 2.85,
+        "pnl_ratio": 0.54,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -2291,7 +2306,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2307,7 +2322,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "MA609P2550",
@@ -2321,11 +2336,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 48,
         "open_price": 73.5,
-        "last_price": 68.0,
-        "float_pnl": -2640.0,
+        "last_price": 72.0,
+        "float_pnl": -720.0,
         "margin": 0.0,
         "cost": 3528.0,
-        "pnl_ratio": -74.83,
+        "pnl_ratio": -20.41,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-15",
         "price_source": "tqsdk",
@@ -2350,7 +2365,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2366,7 +2381,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2674.0
+        "underlying_price": 2667.0
       },
       {
         "contract": "SM608C6100",
@@ -2409,7 +2424,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2437,11 +2452,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 46,
         "open_price": 165.0,
-        "last_price": 160.5,
-        "float_pnl": 1035.0,
+        "last_price": 164.0,
+        "float_pnl": 230.0,
         "margin": 185775.6,
         "cost": 185775.6,
-        "pnl_ratio": 0.56,
+        "pnl_ratio": 0.12,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -2466,7 +2481,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2482,7 +2497,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5900.0
+        "underlying_price": 5894.0
       },
       {
         "contract": "TA609P5600",
@@ -2496,11 +2511,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 46,
         "open_price": 153.0,
-        "last_price": 151.0,
-        "float_pnl": -460.0,
+        "last_price": 156.0,
+        "float_pnl": 690.0,
         "margin": 0.0,
         "cost": 7038.0,
-        "pnl_ratio": -6.54,
+        "pnl_ratio": 9.8,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -2525,7 +2540,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2541,7 +2556,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5812.0
+        "underlying_price": 5806.0
       },
       {
         "contract": "v2609-C-4900",
@@ -2584,7 +2599,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2600,7 +2615,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 4671.0
+        "underlying_price": 4665.0
       },
       {
         "contract": "y2609-C-8600",
@@ -2614,11 +2629,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 21,
         "open_price": 201.5,
-        "last_price": 82.5,
-        "float_pnl": -12495.0,
+        "last_price": 78.5,
+        "float_pnl": -12915.0,
         "margin": 0.0,
         "cost": 4231.5,
-        "pnl_ratio": -295.29,
+        "pnl_ratio": -305.21,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -2643,7 +2658,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2659,7 +2674,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 8386.0
+        "underlying_price": 8359.0
       },
       {
         "contract": "sc2608C680",
@@ -2673,11 +2688,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 1,
         "open_price": 33.0,
-        "last_price": 1.9,
-        "float_pnl": -31100.0,
+        "last_price": 1.8,
+        "float_pnl": -31200.0,
         "margin": 0.0,
         "cost": 33.0,
-        "pnl_ratio": -94242.42,
+        "pnl_ratio": -94545.45,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -2702,7 +2717,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2718,7 +2733,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "ag2607P15400",
@@ -2732,11 +2747,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 4,
         "open_price": 688.0,
-        "last_price": 93.0,
-        "float_pnl": 35700.0,
+        "last_price": 111.0,
+        "float_pnl": 34620.0,
         "margin": 194679.6,
         "cost": 194679.6,
-        "pnl_ratio": 18.34,
+        "pnl_ratio": 17.78,
         "category": "飞鹰策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -2761,7 +2776,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2777,7 +2792,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16798.0
+        "underlying_price": 16688.0
       },
       {
         "contract": "ag2608P15400",
@@ -2820,7 +2835,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2836,7 +2851,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16837.0
+        "underlying_price": 16731.0
       },
       {
         "contract": "a12607C24600",
@@ -2850,11 +2865,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 9,
         "open_price": 348.0,
-        "last_price": 17.0,
-        "float_pnl": -14895.0,
+        "last_price": 18.0,
+        "float_pnl": -14850.0,
         "margin": 0.0,
         "cost": 3132.0,
-        "pnl_ratio": -475.57,
+        "pnl_ratio": -474.14,
         "category": "飞鹰策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -2879,7 +2894,7 @@ const EMBEDDED_DATA = {
           "label": "关注",
           "color": "#FFCC00"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2909,11 +2924,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 7,
         "open_price": 3322.0,
-        "last_price": 146.0,
-        "float_pnl": 22232.0,
+        "last_price": 144.0,
+        "float_pnl": 22246.0,
         "margin": 0.0,
         "cost": 23254.0,
-        "pnl_ratio": 95.61,
+        "pnl_ratio": 95.67,
         "category": "飞鹰策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -2938,7 +2953,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -2954,12 +2969,12 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 135860.0
+        "underlying_price": 135970.0
       }
     ],
     "metrics": {
       "total_volume": 399,
-      "total_float_pnl": -125413.0,
+      "total_float_pnl": -130609.0,
       "total_margin": 557176.8,
       "margin_ratio": 11.14,
       "risk_level": 1,
@@ -2972,7 +2987,7 @@ const EMBEDDED_DATA = {
       "current_iv": 34.73,
       "iv_percentile": 78.92,
       "iv_spread": -2.26,
-      "atr_deviation": -0.05,
+      "atr_deviation": -0.07,
       "min_dte": 8
     },
     "product_greeks": [
@@ -3080,11 +3095,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 23,
         "open_price": 458.0,
-        "last_price": 266.0,
-        "float_pnl": -22080.0,
+        "last_price": 250.0,
+        "float_pnl": -23920.0,
         "margin": 0.0,
         "cost": 10534.0,
-        "pnl_ratio": -209.61,
+        "pnl_ratio": -227.07,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-15",
         "price_source": "tqsdk",
@@ -3109,7 +3124,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3125,7 +3140,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16070.0
+        "underlying_price": 16060.0
       },
       {
         "contract": "MA608P2800",
@@ -3139,11 +3154,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 48,
         "open_price": 110.0,
-        "last_price": 99.5,
-        "float_pnl": 5040.0,
+        "last_price": 108.0,
+        "float_pnl": 960.0,
         "margin": 176721.6,
         "cost": 176721.6,
-        "pnl_ratio": 2.85,
+        "pnl_ratio": 0.54,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3168,7 +3183,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3184,7 +3199,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "SM608C6100",
@@ -3227,7 +3242,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3255,11 +3270,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 46,
         "open_price": 165.0,
-        "last_price": 160.5,
-        "float_pnl": 1035.0,
+        "last_price": 164.0,
+        "float_pnl": 230.0,
         "margin": 185775.6,
         "cost": 185775.6,
-        "pnl_ratio": 0.56,
+        "pnl_ratio": 0.12,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3284,7 +3299,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3300,7 +3315,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5900.0
+        "underlying_price": 5894.0
       },
       {
         "contract": "TA609P5600",
@@ -3314,11 +3329,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 46,
         "open_price": 153.0,
-        "last_price": 151.0,
-        "float_pnl": -460.0,
+        "last_price": 156.0,
+        "float_pnl": 690.0,
         "margin": 0.0,
         "cost": 7038.0,
-        "pnl_ratio": -6.54,
+        "pnl_ratio": 9.8,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -3343,7 +3358,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3359,7 +3374,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5812.0
+        "underlying_price": 5806.0
       },
       {
         "contract": "y2609-C-8600",
@@ -3373,11 +3388,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 21,
         "open_price": 201.5,
-        "last_price": 82.5,
-        "float_pnl": -12495.0,
+        "last_price": 78.5,
+        "float_pnl": -12915.0,
         "margin": 0.0,
         "cost": 4231.5,
-        "pnl_ratio": -295.29,
+        "pnl_ratio": -305.21,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -3402,7 +3417,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3418,7 +3433,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 8386.0
+        "underlying_price": 8359.0
       },
       {
         "contract": "sc2608C680",
@@ -3432,11 +3447,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 1,
         "open_price": 33.0,
-        "last_price": 1.9,
-        "float_pnl": -31100.0,
+        "last_price": 1.8,
+        "float_pnl": -31200.0,
         "margin": 0.0,
         "cost": 33.0,
-        "pnl_ratio": -94242.42,
+        "pnl_ratio": -94545.45,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3461,7 +3476,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3477,7 +3492,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "ag2608P15400",
@@ -3520,7 +3535,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3536,7 +3551,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16837.0
+        "underlying_price": 16731.0
       }
     ],
     "advice": [
@@ -3586,11 +3601,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 4,
         "open_price": 588.5,
-        "last_price": 182.5,
-        "float_pnl": 24360.0,
+        "last_price": 216.0,
+        "float_pnl": 22350.0,
         "margin": 223419.6,
         "cost": 223419.6,
-        "pnl_ratio": 10.9,
+        "pnl_ratio": 10.0,
         "category": "单卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -3615,7 +3630,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.02,
+        "atr_deviation": -0.06,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3631,7 +3646,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16798.0
+        "underlying_price": 16688.0
       },
       {
         "contract": "fu2608P3200",
@@ -3645,11 +3660,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 38,
         "open_price": 88.0,
-        "last_price": 118.5,
-        "float_pnl": -11590.0,
+        "last_price": 138.0,
+        "float_pnl": -19000.0,
         "margin": 226252.0,
         "cost": 226252.0,
-        "pnl_ratio": -5.12,
+        "pnl_ratio": -8.4,
         "category": "单卖策略",
         "expiry_date": "2026-08-14",
         "price_source": "tqsdk",
@@ -3674,7 +3689,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.02,
+        "atr_deviation": -0.06,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3690,12 +3705,12 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 3265.0
+        "underlying_price": 3232.0
       }
     ],
     "metrics": {
       "total_volume": 42,
-      "total_float_pnl": 12770.0,
+      "total_float_pnl": 3350.0,
       "total_margin": 449671.6,
       "margin_ratio": 8.99,
       "risk_level": 1,
@@ -3708,7 +3723,7 @@ const EMBEDDED_DATA = {
       "current_iv": 31.25,
       "iv_percentile": 65.0,
       "iv_spread": 2.0,
-      "atr_deviation": -0.02,
+      "atr_deviation": -0.06,
       "min_dte": 8
     },
     "product_greeks": [
@@ -3744,11 +3759,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 38,
         "open_price": 88.0,
-        "last_price": 118.5,
-        "float_pnl": -11590.0,
+        "last_price": 138.0,
+        "float_pnl": -19000.0,
         "margin": 226252.0,
         "cost": 226252.0,
-        "pnl_ratio": -5.12,
+        "pnl_ratio": -8.4,
         "category": "单卖策略",
         "expiry_date": "2026-08-14",
         "price_source": "tqsdk",
@@ -3773,7 +3788,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.02,
+        "atr_deviation": -0.06,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3789,7 +3804,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 3265.0
+        "underlying_price": 3232.0
       }
     ],
     "advice": [
@@ -3830,11 +3845,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 14.5,
-        "float_pnl": 800.0,
+        "last_price": 13.5,
+        "float_pnl": 1200.0,
         "margin": 160468.0,
         "cost": 160468.0,
-        "pnl_ratio": 0.5,
+        "pnl_ratio": 0.75,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3859,7 +3874,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3875,7 +3890,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "MA608P2475",
@@ -3889,11 +3904,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 16.0,
-        "float_pnl": 200.0,
+        "last_price": 18.0,
+        "float_pnl": -600.0,
         "margin": 83534.0,
         "cost": 83534.0,
-        "pnl_ratio": 0.24,
+        "pnl_ratio": -0.72,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3918,7 +3933,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3934,7 +3949,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "jm2608-C-1500",
@@ -3948,11 +3963,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 60,
         "open_price": 13.35,
-        "last_price": 8.1,
-        "float_pnl": 18900.0,
+        "last_price": 8.0,
+        "float_pnl": 19260.0,
         "margin": 327528.0,
         "cost": 327528.0,
-        "pnl_ratio": 5.77,
+        "pnl_ratio": 5.88,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -3977,7 +3992,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -3993,7 +4008,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1100",
@@ -4007,11 +4022,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 50,
         "open_price": 4.26,
-        "last_price": 3.3,
-        "float_pnl": 2880.0,
+        "last_price": 3.5,
+        "float_pnl": 2280.0,
         "margin": 248340.0,
         "cost": 248340.0,
-        "pnl_ratio": 1.16,
+        "pnl_ratio": 0.92,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -4036,7 +4051,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4052,7 +4067,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1200",
@@ -4066,11 +4081,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 10,
         "open_price": 15.72,
-        "last_price": 12.6,
-        "float_pnl": 1872.0,
+        "last_price": 12.7,
+        "float_pnl": 1812.0,
         "margin": 69216.0,
         "cost": 69216.0,
-        "pnl_ratio": 2.7,
+        "pnl_ratio": 2.62,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -4095,7 +4110,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4111,7 +4126,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "1c2608-C-190000",
@@ -4154,7 +4169,7 @@ const EMBEDDED_DATA = {
           "label": "关注",
           "color": "#FFCC00"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4213,7 +4228,7 @@ const EMBEDDED_DATA = {
           "label": "关注",
           "color": "#FFCC00"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4272,7 +4287,7 @@ const EMBEDDED_DATA = {
           "label": "关注",
           "color": "#FFCC00"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4331,7 +4346,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4390,7 +4405,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4420,11 +4435,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 1,
         "open_price": 7.5,
-        "last_price": 1.7,
-        "float_pnl": 5800.0,
+        "last_price": 1.6,
+        "float_pnl": 5900.0,
         "margin": 53871.0,
         "cost": 53871.0,
-        "pnl_ratio": 10.77,
+        "pnl_ratio": 10.95,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -4449,7 +4464,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4465,7 +4480,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "sc2608P500",
@@ -4479,11 +4494,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 2,
         "open_price": 3.5,
-        "last_price": 11.2,
-        "float_pnl": -15400.0,
+        "last_price": 12.1,
+        "float_pnl": -17200.0,
         "margin": 190184.0,
         "cost": 190184.0,
-        "pnl_ratio": -8.1,
+        "pnl_ratio": -9.04,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -4508,7 +4523,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4524,7 +4539,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "ag2607C17000",
@@ -4538,11 +4553,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 1,
         "open_price": 438.0,
-        "last_price": 356.0,
-        "float_pnl": 1230.0,
+        "last_price": 308.0,
+        "float_pnl": 1950.0,
         "margin": 57482.4,
         "cost": 57482.4,
-        "pnl_ratio": 2.14,
+        "pnl_ratio": 3.39,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4567,7 +4582,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4583,7 +4598,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16798.0
+        "underlying_price": 16688.0
       },
       {
         "contract": "ag2607P15000",
@@ -4597,11 +4612,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 1,
         "open_price": 300.0,
-        "last_price": 64.0,
-        "float_pnl": 3540.0,
+        "last_price": 80.0,
+        "float_pnl": 3300.0,
         "margin": 44537.4,
         "cost": 44537.4,
-        "pnl_ratio": 7.95,
+        "pnl_ratio": 7.41,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4626,7 +4641,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4642,7 +4657,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16798.0
+        "underlying_price": 16688.0
       },
       {
         "contract": "br2607C15000",
@@ -4656,11 +4671,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 20,
         "open_price": 101.05,
-        "last_price": 17.0,
-        "float_pnl": 8405.0,
+        "last_price": 15.0,
+        "float_pnl": 8605.0,
         "margin": 109280.0,
         "cost": 109280.0,
-        "pnl_ratio": 7.69,
+        "pnl_ratio": 7.87,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4685,7 +4700,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4701,7 +4716,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 13495.0
+        "underlying_price": 13485.0
       },
       {
         "contract": "br2607P13000",
@@ -4715,11 +4730,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 20,
         "open_price": 105.0,
-        "last_price": 106.0,
-        "float_pnl": -100.0,
+        "last_price": 116.0,
+        "float_pnl": -1100.0,
         "margin": 186280.0,
         "cost": 186280.0,
-        "pnl_ratio": -0.05,
+        "pnl_ratio": -0.59,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4744,7 +4759,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4760,7 +4775,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 13495.0
+        "underlying_price": 13485.0
       },
       {
         "contract": "sn2607C470000",
@@ -4774,11 +4789,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 6,
         "open_price": 900.0,
-        "last_price": 470.0,
-        "float_pnl": 12900.0,
+        "last_price": 428.0,
+        "float_pnl": 14160.0,
         "margin": 199375.2,
         "cost": 199375.2,
-        "pnl_ratio": 6.47,
+        "pnl_ratio": 7.1,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4803,7 +4818,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4819,7 +4834,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 423120.0
+        "underlying_price": 421440.0
       },
       {
         "contract": "sn2607P370000",
@@ -4833,11 +4848,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 6,
         "open_price": 556.0,
-        "last_price": 470.0,
-        "float_pnl": 2580.0,
+        "last_price": 562.0,
+        "float_pnl": -180.0,
         "margin": 211075.2,
         "cost": 211075.2,
-        "pnl_ratio": 1.22,
+        "pnl_ratio": -0.09,
         "category": "双卖策略",
         "expiry_date": "2026-06-24",
         "price_source": "tqsdk",
@@ -4862,7 +4877,7 @@ const EMBEDDED_DATA = {
           "label": "正常",
           "color": "#44AA44"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -4878,12 +4893,12 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 423120.0
+        "underlying_price": 421440.0
       }
     ],
     "metrics": {
       "total_volume": 286,
-      "total_float_pnl": 48359.0,
+      "total_float_pnl": 44139.0,
       "total_margin": 2384124.8,
       "margin_ratio": 47.68,
       "risk_level": 1,
@@ -4896,7 +4911,7 @@ const EMBEDDED_DATA = {
       "current_iv": 34.67,
       "iv_percentile": 78.67,
       "iv_spread": 2.0,
-      "atr_deviation": -0.19,
+      "atr_deviation": -0.22,
       "min_dte": 8
     },
     "product_greeks": [
@@ -4986,11 +5001,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 14.5,
-        "float_pnl": 800.0,
+        "last_price": 13.5,
+        "float_pnl": 1200.0,
         "margin": 160468.0,
         "cost": 160468.0,
-        "pnl_ratio": 0.5,
+        "pnl_ratio": 0.75,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5015,7 +5030,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5031,7 +5046,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "MA608P2475",
@@ -5045,11 +5060,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 16.0,
-        "float_pnl": 200.0,
+        "last_price": 18.0,
+        "float_pnl": -600.0,
         "margin": 83534.0,
         "cost": 83534.0,
-        "pnl_ratio": 0.24,
+        "pnl_ratio": -0.72,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5074,7 +5089,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5090,7 +5105,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "jm2608-C-1500",
@@ -5104,11 +5119,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 60,
         "open_price": 13.35,
-        "last_price": 8.1,
-        "float_pnl": 18900.0,
+        "last_price": 8.0,
+        "float_pnl": 19260.0,
         "margin": 327528.0,
         "cost": 327528.0,
-        "pnl_ratio": 5.77,
+        "pnl_ratio": 5.88,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5133,7 +5148,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5149,7 +5164,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1100",
@@ -5163,11 +5178,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 50,
         "open_price": 4.26,
-        "last_price": 3.3,
-        "float_pnl": 2880.0,
+        "last_price": 3.5,
+        "float_pnl": 2280.0,
         "margin": 248340.0,
         "cost": 248340.0,
-        "pnl_ratio": 1.16,
+        "pnl_ratio": 0.92,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5192,7 +5207,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5208,7 +5223,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1200",
@@ -5222,11 +5237,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 10,
         "open_price": 15.72,
-        "last_price": 12.6,
-        "float_pnl": 1872.0,
+        "last_price": 12.7,
+        "float_pnl": 1812.0,
         "margin": 69216.0,
         "cost": 69216.0,
-        "pnl_ratio": 2.7,
+        "pnl_ratio": 2.62,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5251,7 +5266,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5267,7 +5282,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "ps2608-C-40000",
@@ -5310,7 +5325,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5369,7 +5384,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5399,11 +5414,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 1,
         "open_price": 7.5,
-        "last_price": 1.7,
-        "float_pnl": 5800.0,
+        "last_price": 1.6,
+        "float_pnl": 5900.0,
         "margin": 53871.0,
         "cost": 53871.0,
-        "pnl_ratio": 10.77,
+        "pnl_ratio": 10.95,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5428,7 +5443,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5444,7 +5459,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "sc2608P500",
@@ -5458,11 +5473,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 2,
         "open_price": 3.5,
-        "last_price": 11.2,
-        "float_pnl": -15400.0,
+        "last_price": 12.1,
+        "float_pnl": -17200.0,
         "margin": 190184.0,
         "cost": 190184.0,
-        "pnl_ratio": -8.1,
+        "pnl_ratio": -9.04,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5487,7 +5502,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5503,7 +5518,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       }
     ],
     "advice": [
@@ -5540,7 +5555,7 @@ const EMBEDDED_DATA = {
   "unclassified": [],
   "summary": {
     "total_volume": 727,
-    "total_float_pnl": -64284.0,
+    "total_float_pnl": -83120.0,
     "total_margin": 3390973.2,
     "risk_level": 1,
     "risk_label": "正常持有",
@@ -5553,7 +5568,7 @@ const EMBEDDED_DATA = {
       {
         "name": "飞鹰策略",
         "volume": 399,
-        "float_pnl": -125413.0,
+        "float_pnl": -130609.0,
         "margin": 557176.8,
         "margin_ratio": 11.14,
         "risk_level": 1,
@@ -5570,7 +5585,7 @@ const EMBEDDED_DATA = {
       {
         "name": "单卖策略",
         "volume": 42,
-        "float_pnl": 12770.0,
+        "float_pnl": 3350.0,
         "margin": 449671.6,
         "margin_ratio": 8.99,
         "risk_level": 1,
@@ -5587,7 +5602,7 @@ const EMBEDDED_DATA = {
       {
         "name": "双卖策略",
         "volume": 286,
-        "float_pnl": 48359.0,
+        "float_pnl": 44139.0,
         "margin": 2384124.8,
         "margin_ratio": 47.68,
         "risk_level": 1,
@@ -5615,11 +5630,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 23,
         "open_price": 458.0,
-        "last_price": 266.0,
-        "float_pnl": -22080.0,
+        "last_price": 250.0,
+        "float_pnl": -23920.0,
         "margin": 0.0,
         "cost": 10534.0,
-        "pnl_ratio": -209.61,
+        "pnl_ratio": -227.07,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-15",
         "price_source": "tqsdk",
@@ -5644,7 +5659,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5660,7 +5675,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16070.0
+        "underlying_price": 16060.0
       },
       {
         "contract": "MA608P2800",
@@ -5674,11 +5689,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 48,
         "open_price": 110.0,
-        "last_price": 99.5,
-        "float_pnl": 5040.0,
+        "last_price": 108.0,
+        "float_pnl": 960.0,
         "margin": 176721.6,
         "cost": 176721.6,
-        "pnl_ratio": 2.85,
+        "pnl_ratio": 0.54,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5703,7 +5718,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5719,7 +5734,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "SM608C6100",
@@ -5762,7 +5777,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5790,11 +5805,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 46,
         "open_price": 165.0,
-        "last_price": 160.5,
-        "float_pnl": 1035.0,
+        "last_price": 164.0,
+        "float_pnl": 230.0,
         "margin": 185775.6,
         "cost": 185775.6,
-        "pnl_ratio": 0.56,
+        "pnl_ratio": 0.12,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5819,7 +5834,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5835,7 +5850,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5900.0
+        "underlying_price": 5894.0
       },
       {
         "contract": "TA609P5600",
@@ -5849,11 +5864,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 46,
         "open_price": 153.0,
-        "last_price": 151.0,
-        "float_pnl": -460.0,
+        "last_price": 156.0,
+        "float_pnl": 690.0,
         "margin": 0.0,
         "cost": 7038.0,
-        "pnl_ratio": -6.54,
+        "pnl_ratio": 9.8,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -5878,7 +5893,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5894,7 +5909,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 5812.0
+        "underlying_price": 5806.0
       },
       {
         "contract": "y2609-C-8600",
@@ -5908,11 +5923,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 21,
         "open_price": 201.5,
-        "last_price": 82.5,
-        "float_pnl": -12495.0,
+        "last_price": 78.5,
+        "float_pnl": -12915.0,
         "margin": 0.0,
         "cost": 4231.5,
-        "pnl_ratio": -295.29,
+        "pnl_ratio": -305.21,
         "category": "飞鹰策略",
         "expiry_date": "2026-08-18",
         "price_source": "tqsdk",
@@ -5937,7 +5952,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -5953,7 +5968,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 8386.0
+        "underlying_price": 8359.0
       },
       {
         "contract": "sc2608C680",
@@ -5967,11 +5982,11 @@ const EMBEDDED_DATA = {
         "direction": "多",
         "volume": 1,
         "open_price": 33.0,
-        "last_price": 1.9,
-        "float_pnl": -31100.0,
+        "last_price": 1.8,
+        "float_pnl": -31200.0,
         "margin": 0.0,
         "cost": 33.0,
-        "pnl_ratio": -94242.42,
+        "pnl_ratio": -94545.45,
         "category": "飞鹰策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -5996,7 +6011,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6012,7 +6027,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "ag2608P15400",
@@ -6055,7 +6070,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.05,
+        "atr_deviation": -0.07,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6071,7 +6086,7 @@ const EMBEDDED_DATA = {
         "iv_spread": -2.26,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 16837.0
+        "underlying_price": 16731.0
       },
       {
         "contract": "fu2608P3200",
@@ -6085,11 +6100,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 38,
         "open_price": 88.0,
-        "last_price": 118.5,
-        "float_pnl": -11590.0,
+        "last_price": 138.0,
+        "float_pnl": -19000.0,
         "margin": 226252.0,
         "cost": 226252.0,
-        "pnl_ratio": -5.12,
+        "pnl_ratio": -8.4,
         "category": "单卖策略",
         "expiry_date": "2026-08-14",
         "price_source": "tqsdk",
@@ -6114,7 +6129,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.02,
+        "atr_deviation": -0.06,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6130,7 +6145,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 3265.0
+        "underlying_price": 3232.0
       },
       {
         "contract": "MA608C3050",
@@ -6144,11 +6159,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 14.5,
-        "float_pnl": 800.0,
+        "last_price": 13.5,
+        "float_pnl": 1200.0,
         "margin": 160468.0,
         "cost": 160468.0,
-        "pnl_ratio": 0.5,
+        "pnl_ratio": 0.75,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6173,7 +6188,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6189,7 +6204,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "MA608P2475",
@@ -6203,11 +6218,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 40,
         "open_price": 16.5,
-        "last_price": 16.0,
-        "float_pnl": 200.0,
+        "last_price": 18.0,
+        "float_pnl": -600.0,
         "margin": 83534.0,
         "cost": 83534.0,
-        "pnl_ratio": 0.24,
+        "pnl_ratio": -0.72,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6232,7 +6247,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6248,7 +6263,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 2773.0
+        "underlying_price": 2757.0
       },
       {
         "contract": "jm2608-C-1500",
@@ -6262,11 +6277,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 60,
         "open_price": 13.35,
-        "last_price": 8.1,
-        "float_pnl": 18900.0,
+        "last_price": 8.0,
+        "float_pnl": 19260.0,
         "margin": 327528.0,
         "cost": 327528.0,
-        "pnl_ratio": 5.77,
+        "pnl_ratio": 5.88,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6291,7 +6306,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6307,7 +6322,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1100",
@@ -6321,11 +6336,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 50,
         "open_price": 4.26,
-        "last_price": 3.3,
-        "float_pnl": 2880.0,
+        "last_price": 3.5,
+        "float_pnl": 2280.0,
         "margin": 248340.0,
         "cost": 248340.0,
-        "pnl_ratio": 1.16,
+        "pnl_ratio": 0.92,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6350,7 +6365,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6366,7 +6381,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "jm2608-P-1200",
@@ -6380,11 +6395,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 10,
         "open_price": 15.72,
-        "last_price": 12.6,
-        "float_pnl": 1872.0,
+        "last_price": 12.7,
+        "float_pnl": 1812.0,
         "margin": 69216.0,
         "cost": 69216.0,
-        "pnl_ratio": 2.7,
+        "pnl_ratio": 2.62,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6409,7 +6424,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6425,7 +6440,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 1310.0
+        "underlying_price": 1309.0
       },
       {
         "contract": "sc2608C700",
@@ -6439,11 +6454,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 1,
         "open_price": 7.5,
-        "last_price": 1.7,
-        "float_pnl": 5800.0,
+        "last_price": 1.6,
+        "float_pnl": 5900.0,
         "margin": 53871.0,
         "cost": 53871.0,
-        "pnl_ratio": 10.77,
+        "pnl_ratio": 10.95,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6468,7 +6483,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6484,7 +6499,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "sc2608P500",
@@ -6498,11 +6513,11 @@ const EMBEDDED_DATA = {
         "direction": "空",
         "volume": 2,
         "open_price": 3.5,
-        "last_price": 11.2,
-        "float_pnl": -15400.0,
+        "last_price": 12.1,
+        "float_pnl": -17200.0,
         "margin": 190184.0,
         "cost": 190184.0,
-        "pnl_ratio": -8.1,
+        "pnl_ratio": -9.04,
         "category": "双卖策略",
         "expiry_date": "2026-07-15",
         "price_source": "tqsdk",
@@ -6527,7 +6542,7 @@ const EMBEDDED_DATA = {
           "label": "高危",
           "color": "#FF4444"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6543,7 +6558,7 @@ const EMBEDDED_DATA = {
         "iv_spread": 2.0,
         "data_source": "iv_api",
         "underlying_price_source": "iv_api",
-        "underlying_price": 520.1
+        "underlying_price": 517.8
       },
       {
         "contract": "ps2608-C-40000",
@@ -6586,7 +6601,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
@@ -6645,7 +6660,7 @@ const EMBEDDED_DATA = {
           "label": "预警",
           "color": "#FF8800"
         },
-        "atr_deviation": -0.19,
+        "atr_deviation": -0.22,
         "atr_risk": {
           "level": 1,
           "label": "正常",
