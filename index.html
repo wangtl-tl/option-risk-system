@@ -1421,7 +1421,7 @@ P3: 默认归类为"飞鹰策略"</pre>
 
     <script>
 <script>
-// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 09:28）
+// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 09:44）
 // 数据时间: 2026-06-16 08:44:04
 const EMBEDDED_DATA = {
   "timestamp": "2026-06-16 08:44:04",
@@ -6128,30 +6128,21 @@ const EMBEDDED_DATA = {
         // ============================================
         // 数据加载（本地优先API / 静态文件 / GitHub Fallback）
         // ============================================
-                async function loadData() {
+        // <!-- DEPLOY_REPLACE_START -->
+        async function loadData() {
             try {
                 let data;
-                // GitHub Pages 模式：优先使用内嵌数据
+                // GitHub Pages 模式：直接使用内嵌数据
                 if (typeof EMBEDDED_DATA !== 'undefined') {
                     data = EMBEDDED_DATA;
-                } else if (API_BASE) {
-                    // 模式1：显式指定API地址
-                    const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
-                    data = await response.json();
                 } else {
-                    // 本地模式：优先走 /api/data（同一端口的后端API）
-                    let resp = await fetch('/api/data?t=' + Date.now()).catch(() => null);
-                    if (resp && resp.ok) {
-                        data = await resp.json();
-                    } else {
-                        // Fallback: 从 GitHub API 读取
-                        const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
-                        const ghResp = await fetch(ghRawUrl, {
-                            headers: { 'Accept': 'application/vnd.github.v3.raw' }
-                        });
-                        if (!ghResp.ok) throw new Error('数据源不可用');
-                        data = await ghResp.json();
-                    }
+                    // 保底：尝试从 GitHub API 读取 data.json
+                    const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
+                    const ghResp = await fetch(ghRawUrl, {
+                        headers: { 'Accept': 'application/vnd.github.v3.raw' }
+                    });
+                    if (!ghResp.ok) throw new Error('数据源不可用');
+                    data = await ghResp.json();
                 }
                 currentData = data;
                 updateStatusBar(data);
@@ -6160,9 +6151,10 @@ const EMBEDDED_DATA = {
             } catch (error) {
                 console.error('数据加载失败:', error);
                 document.getElementById('main-content').innerHTML =
-                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查网络或后端服务</div>';
+                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查网络</div>';
             }
         }
+        // <!-- DEPLOY_REPLACE_END -->
 
         // ============================================
         // 全局状态条更新
