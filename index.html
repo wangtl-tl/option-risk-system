@@ -1420,8 +1420,772 @@ P3: 默认归类为"飞鹰策略"</pre>
     </div>
 
     <script>
+        // ============================================
+        // 后端地址配置（支持URL参数 ?api=https://your-backend.com:18099）
+        // ============================================
+        const _urlParams = new URLSearchParams(window.location.search);
+        const API_BASE = _urlParams.get('api') || '';  // 默认空（相对路径，本地使用）
+        // ============================================
+
+        // ============================================
+        // 全局状态
+        // ============================================
+        let currentData = null;
+        let refreshInterval = null;
+        let countdownInterval = null;
+        let nextRefreshTime = null;
+        let isRefreshing = false;
+        let currentPage = 'eagle';
+        const REFRESH_INTERVAL_MS = 900000; // 15分钟（与后端数据刷新频率对齐）
+
+        // ============================================
+        // 侧边栏导航
+        // ============================================
+        document.querySelectorAll('.sidebar-item[data-page]').forEach(item => {
+            item.addEventListener('click', () => {
+                const page = item.dataset.page;
+                currentPage = page;
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                if (currentData) renderPage(page);
+            });
+        });
+
+        function renderPage(page) {
+            currentPage = page;
+            if (!currentData) return;
+            const main = document.getElementById('main-content');
+            switch (page) {
+                case 'eagle':
+                    main.innerHTML = renderStrategyPage('eagle', '飞鹰策略', currentData.eagle || {});
+                    bindFilterTabs('eagle');
+                    break;
+                case 'single_sell':
+                    main.innerHTML = renderStrategyPage('single_sell', '单卖策略', currentData.single_sell || {});
+                    bindFilterTabs('single_sell');
+                    break;
+                case 'double_sell':
+                    main.innerHTML = renderStrategyPage('double_sell', '双卖策略', currentData.double_sell || {});
+                    bindFilterTabs('double_sell');
+                    break;
+                case 'summary':
+                    main.innerHTML = renderSummaryPage(currentData.summary || {});
+                    break;
+            }
+        }
+
+        // ============================================
+        // 数据加载（本地优先API / 静态文件 / GitHub Fallback）
+        // ============================================
+        // <!-- DEPLOY_REPLACE_START -->
+        async function loadData() {
+            try {
+                let data;
+                // GitHub Pages 模式：直接使用内嵌数据
+                if (typeof EMBEDDED_DATA !== 'undefined') {
+                    data = EMBEDDED_DATA;
+                } else {
+                    // 保底：尝试从 GitHub API 读取 data.json
+                    const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
+                    const ghResp = await fetch(ghRawUrl, {
+                        headers: { 'Accept': 'application/vnd.github.v3.raw' }
+                    });
+                    if (!ghResp.ok) throw new Error('数据源不可用');
+                    data = await ghResp.json();
+                }
+                currentData = data;
+                updateStatusBar(data);
+                updateSidebarIndicators(data);
+                renderPage(currentPage);
+            } catch (error) {
+                console.error('数据加载失败:', error);
+                document.getElementById('main-content').innerHTML =
+                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查网络</div>';
+            }
+        }
+        // <!-- DEPLOY_REPLACE_END -->
+
+        // ============================================
+        // 全局状态条更新
+        // ============================================
+        function updateStatusBar(data) {
+            const s = data.summary || {};
+            const pnl = s.total_float_pnl || 0;
+
+            document.getElementById('statusPnl').textContent = (pnl >= 0 ? '+' : '') + formatMoney(pnl);
+            document.getElementById('statusPnl').className = 'status-value ' + (pnl >= 0 ? 'up' : 'down');
+
+            const marginTotal = s.total_margin || 0;
+            document.getElementById('statusMargin').textContent = formatMoney(marginTotal);
+
+            document.getElementById('statusDelta').textContent = (s.delta || 0).toFixed(2);
+            document.getElementById('statusDelta').className = 'status-value ' + ((s.delta || 0) >= 0 ? 'up' : 'down');
+
+            document.getElementById('statusTheta').textContent = (s.theta || 0).toFixed(0);
+            document.getElementById('statusTheta').className = 'status-value ' + ((s.theta || 0) >= 0 ? 'up' : 'down');
+
+            const level = s.risk_level || 1;
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            dot.className = 'status-dot';
+            if (level >= 4) { dot.classList.add('critical'); txt.textContent = '高危'; }
+            else if (level >= 3) { dot.classList.add('warn'); txt.textContent = '预警'; }
+            else { dot.classList.add('ok'); txt.textContent = '正常'; }
+
+            if (data.timestamp) {
+                // 显示数据时间戳 + 下次刷新倒计时
+                document.getElementById('statusTime').textContent = data.timestamp;
+                // 重置下次刷新时间
+                nextRefreshTime = Date.now() + REFRESH_INTERVAL_MS;
+                if (!countdownInterval) {
+                    countdownInterval = setInterval(updateCountdown, 1000);
+                }
+            }
+
+            updateAccountSummary(data);
+        }
+
+        // ============================================
+        // 下次刷新倒计时
+        // ============================================
+        function updateCountdown() {
+            if (!nextRefreshTime) return;
+            const now = Date.now();
+            const diff = nextRefreshTime - now;
+            const el = document.getElementById('statusTime');
+            if (diff <= 0) {
+                el.textContent = '刷新中...';
+                return;
+            }
+            const minutes = Math.floor(diff / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            const baseText = currentData && currentData.timestamp ? currentData.timestamp.split(' ')[1] || currentData.timestamp : '';
+            el.textContent = baseText + ' (下次' + minutes + ':' + String(seconds).padStart(2, '0') + ')';
+        }
+
+        function updateAccountSummary(data) {
+            const s = data.summary || {};
+            const totalMargin = s.total_margin || 0;
+
+            const totalAsset = 385200;
+            const available = totalAsset - totalMargin;
+            const ratio = totalAsset > 0 ? (totalMargin / totalAsset * 100) : 0;
+
+            document.getElementById('acctTotal').textContent = formatMoney(totalAsset);
+            document.getElementById('acctUsed').textContent = formatMoney(totalMargin);
+            document.getElementById('acctAvail').textContent = formatMoney(Math.max(0, available));
+
+            const bar = document.getElementById('acctBar');
+            bar.style.width = Math.min(ratio, 100) + '%';
+            bar.className = 'mini-progress-fill';
+            if (ratio > 90) bar.classList.add('danger');
+            else if (ratio > 80) bar.classList.add('warn');
+            else bar.classList.add('safe');
+        }
+
+        function updateSidebarIndicators(data) {
+            const strategies = [
+                { key: 'eagle', id: 'ind-eagle' },
+                { key: 'single_sell', id: 'ind-single_sell' },
+                { key: 'double_sell', id: 'ind-double_sell' }
+            ];
+            strategies.forEach(st => {
+                const el = document.getElementById(st.id);
+                if (!el) return;
+                const d = data[st.key] || {};
+                const m = d.metrics || {};
+                const level = m.risk_level || 1;
+                el.className = 'indicator';
+                if (level >= 4) el.classList.add('critical');
+                else if (level >= 3) el.classList.add('warn');
+                else el.classList.add('ok');
+            });
+        }
+
+        // ============================================
+        // 手动刷新
+        // ============================================
+        async function manualRefresh() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+            const btn = document.getElementById('btnRefresh');
+            const orig = btn.textContent;
+            btn.classList.add('spinning');
+            btn.textContent = '刷新中...';
+
+            try {
+                if (API_BASE) {
+                    // API模式：触发后端刷新
+                    const resp = await fetch(API_BASE + '/api/refresh?t=' + Date.now());
+                    const result = await resp.json();
+                    if (result.success) {
+                        await loadData();
+                    } else { throw new Error(result.message || '刷新失败'); }
+                }
+                // 静态模式：重新加载 data.json
+                await loadData();
+                btn.textContent = '已刷新';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
+            } catch (e) {
+                btn.textContent = '错误';
+                btn.style.background = '#EF4444';
+                setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+            } finally {
+                isRefreshing = false;
+                btn.classList.remove('spinning');
+            }
+        }
+
+        // ============================================
+        // 策略页面渲染（仪表盘视图）
+        // ============================================
+        function renderStrategyPage(strategyId, strategyName, data) {
+            const metrics = data.metrics || {};
+            const positions = data.positions || [];
+            const riskPositions = data.risk_positions || [];
+            const advice = data.advice || [];
+            const productGreeks = data.product_greeks || [];
+
+            if (positions.length === 0) {
+                return '<div class="empty-state">暂无持仓数据</div>';
+            }
+
+            const riskLevel = metrics.risk_level || 1;
+            const riskLabel = metrics.risk_label || '正常';
+            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
+
+            const sellPositions = positions.filter(p => p.direction === '空');
+            const buyPositions = positions.filter(p => p.direction === '多');
+
+            return `
+                <!-- 策略标题 -->
+                <div class="section-header">
+                    <span class="section-title">${strategyName} · 风控仪表盘</span>
+                    <span class="section-badge">${positions.length}笔持仓</span>
+                </div>
+
+                <!-- KPI行 -->
+                <div class="kpi-row">
+                    <div class="risk-card">
+                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
+                        <div class="risk-info">
+                            <h3>${riskLabel}</h3>
+                            <p>${getRiskSummary(metrics, riskLevel)}</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">浮动盈亏</div>
+                        <div class="kpi-value ${(metrics.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(metrics.total_float_pnl || 0)}</div>
+                        <div class="kpi-sub">${positions.length}笔 · ${sellPositions.length}卖${buyPositions.length}买</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">保证金使用率</div>
+                        <div class="kpi-value">${(metrics.margin_ratio || 0).toFixed(1)}%</div>
+                        <div class="mini-progress" style="margin-top:8px;">
+                            <div class="mini-progress-fill ${(metrics.margin_ratio || 0) > 90 ? 'danger' : (metrics.margin_ratio || 0) > 80 ? 'warn' : 'safe'}" style="width:${Math.min(metrics.margin_ratio || 0, 100)}%"></div>
+                        </div>
+                        <div class="kpi-sub" style="margin-top:6px;">占用 ${formatMoney(metrics.total_margin || 0)}</div>
+                    </div>
+                </div>
+
+                <!-- 希腊字母 -->
+                <div class="section-header"><span class="section-title">希腊字母</span></div>
+                <div class="greeks-grid">
+                    <div class="greek-card">
+                        <div class="greek-symbol">Delta</div>
+                        <div class="greek-number ${(metrics.delta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.delta || 0).toFixed(4)}</div>
+                        <div class="greek-desc">标的价格变动1元<br>组合价值变动金额</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Gamma</div>
+                        <div class="greek-number ${(metrics.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.gamma || 0).toFixed(4)}</div>
+                        <div class="greek-desc">Delta对标的价格<br>变化的敏感度</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Vega</div>
+                        <div class="greek-number ${(metrics.vega || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.vega || 0).toFixed(2)}</div>
+                        <div class="greek-desc">IV变动1%<br>组合价值变动金额</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Theta</div>
+                        <div class="greek-number ${(metrics.theta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.theta || 0).toFixed(2)}</div>
+                        <div class="greek-desc">时间流逝1天<br>组合价值变动金额</div>
+                    </div>
+                </div>
+
+                <!-- IV指标 -->
+                <div class="iv-row">
+                    <div class="iv-card">
+                        <div class="iv-label">当前IV</div>
+                        <div class="iv-value low">${(metrics.current_iv || 0).toFixed(1)}%</div>
+                    </div>
+                    <div class="iv-card">
+                        <div class="iv-label">IV分位</div>
+                        <div class="iv-value ${(metrics.iv_percentile || 0) > 80 ? 'high' : (metrics.iv_percentile || 0) > 70 ? 'mid' : 'low'}">${(metrics.iv_percentile || 0).toFixed(1)}%</div>
+                    </div>
+                    <div class="iv-card">
+                        <div class="iv-label">近远月IV价差</div>
+                        <div class="iv-value low">${(metrics.iv_spread || 0).toFixed(2)}%</div>
+                    </div>
+                </div>
+
+                <!-- 品种希腊字母 -->
+                ${productGreeks.length > 0 ? `
+                <div class="section-header"><span class="section-title">品种希腊字母</span><span class="section-badge">${productGreeks.length}个品种</span></div>
+                <div class="product-strip">
+                    ${productGreeks.map(pg => `
+                        <div class="product-chip">
+                            <div class="name">${pg.product_name || pg.product}</div>
+                            <div class="delta ${(pg.delta || 0) >= 0 ? 'pos' : 'neg'}">Δ ${(pg.delta || 0).toFixed(2)}</div>
+                            <div class="gamma-val">Γ ${(pg.gamma || 0).toFixed(3)} · ν ${(pg.vega || 0).toFixed(0)}</div>
+                            <div class="theta-val"><span class="t-label">θ </span><span class="t-num ${(pg.theta || 0) >= 0 ? 'pos' : 'neg'}">${(pg.theta || 0).toFixed(1)}</span></div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 持仓明细 -->
+                <div class="data-section">
+                    <div class="data-section-header">
+                        <span class="section-title" style="font-size:13px;">持仓明细</span>
+                        <div class="filter-tabs" data-strategy="${strategyId}">
+                            <button class="filter-tab active" data-filter="all">全部 (${positions.length})</button>
+                            <button class="filter-tab" data-filter="sell">卖出 (${sellPositions.length})</button>
+                            <button class="filter-tab" data-filter="buy">买入 (${buyPositions.length})</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="posTable-${strategyId}">
+                            <thead>
+                                <tr>
+                                    <th>品种</th>
+                                    <th>合约代码</th>
+                                    <th>方向</th>
+                                    <th>手数</th>
+                                    <th>开仓均价</th>
+                                    <th>最新价</th>
+                                    <th>浮动盈亏</th>
+                                    <th>盈亏%</th>
+                                    <th>保证金</th>
+                                    <th>保证金%</th>
+                                    <th>DTE</th>
+                                    <th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>风险</th>
+                                </tr>
+                            </thead>
+                            <tbody id="posBody-${strategyId}">
+                                ${positions.map(p => renderPositionRow(p)).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 风险异常清单 -->
+                ${riskPositions.length > 0 ? `
+                <div class="section-header"><span class="section-title">风险异常</span><span class="section-badge">${riskPositions.length}笔</span></div>
+                <div class="risk-list">
+                    ${riskPositions.map(p => {
+                        const lvl = p.risk_level || 2;
+                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
+                        return `
+                            <div class="risk-item ${lvlClass}">
+                                <div class="risk-item-info">
+                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
+                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
+                                </div>
+                                <div class="risk-item-metrics">
+                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
+                                    <span>IV ${p.iv_percentile || '-'}%</span>
+                                    <span>ATR ${p.atr_deviation || '-'}x</span>
+                                    <span>DTE ${p.dte || '-'}天</span>
+                                </div>
+                                <span class="tag ${lvl >= 4 ? 'tag-danger' : lvl >= 3 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 调仓建议 -->
+                ${advice.length > 0 ? `
+                <div class="section-header"><span class="section-title">调仓建议</span><span class="section-badge">${advice.length}条</span></div>
+                <div class="advice-list">
+                    ${advice.map(a => `
+                        <div class="advice-item ${a.priority || '正常'}">
+                            <div class="advice-header">
+                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
+                                <span class="advice-action">${a.action || '维持'}</span>
+                            </div>
+                            <div class="advice-reason">${a.reason || ''}</div>
+                            <div class="advice-detail">${a.detail || ''}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            `;
+        }
+
+        function renderPositionRow(p) {
+            const riskLevel = p.risk_level || 1;
+            const rowClass = riskLevel >= 4 ? 'row-danger' : riskLevel >= 3 ? 'row-warn' : '';
+            const dirColor = p.direction === '多' ? 'color:var(--red);' : 'color:var(--green);';
+            const tagClass = riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok';
+            const fmt4 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(4);
+            const fmt2 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(2);
+            // 数据来源标记（希腊字母列）
+            let sourceMark = '';
+            if (p.greeks_source === 'tqsdk') {
+                sourceMark = '<span style="color:#10B981;font-size:9px;margin-left:2px;">●TqSdk</span>';
+            } else if (p.greeks_source && p.greeks_source.startsWith('database')) {
+                sourceMark = '<span style="color:#3B82F6;font-size:9px;margin-left:2px;">●DB</span>';
+            } else if (p.greeks_source === 'bs_estimate') {
+                sourceMark = '<span style="color:#F59E0B;font-size:9px;margin-left:2px;">●估算</span>';
+            }
+            // 价格来源标记（最新价列）
+            let priceMark = '';
+            const ps = p.price_source || '';
+            if (ps === 'tqsdk' || (!ps && p.last_price > 0 && p.last_price !== p.open_price)) {
+                priceMark = '<span style="color:#10B981;font-size:9px;margin-left:3px;opacity:0.7;">[R]</span>';
+            } else if (ps === 'bs_estimate') {
+                priceMark = '<span style="color:#F59E0B;font-size:9px;margin-left:3px;opacity:0.7;">[E]</span>';
+            } else if (ps === 'open_price' || p.last_price === p.open_price) {
+                priceMark = '<span style="color:#EF4444;font-size:9px;margin-left:3px;opacity:0.7;">[O]</span>';
+            }
+            return `
+                <tr class="${rowClass}" data-direction="${p.direction === '空' ? 'sell' : 'buy'}">
+                    <td><strong>${p.product_name || p.product}</strong></td>
+                    <td style="color:var(--cyan);">${p.contract}</td>
+                    <td class="text-center"><span style="${dirColor}">${p.direction}</span></td>
+                    <td class="num">${p.volume}</td>
+                    <td class="num">${p.open_price}</td>
+                    <td class="num">${p.last_price || '-'}${priceMark}</td>
+                    <td class="num ${p.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(p.float_pnl)}</td>
+                    <td class="num ${p.pnl_ratio >= 0 ? 'pos' : 'neg'}">${p.pnl_ratio || 0}%</td>
+                    <td class="num">${formatMoney(p.margin)}</td>
+                    <td class="num">${p.margin_ratio || 0}%</td>
+                    <td class="num">${p.dte}天</td>
+                    <td class="num" style="font-size:11px;">${fmt4(p.delta || 0)}${sourceMark}</td>
+                    <td class="num" style="font-size:11px;">${fmt4(p.gamma || 0)}</td>
+                    <td class="num" style="font-size:11px;">${fmt2(p.vega || 0)}</td>
+                    <td class="num" style="font-size:11px;">${fmt2(p.theta || 0)}</td>
+                    <td class="text-center"><span class="tag ${tagClass}">${p.risk_label || '正常'}</span></td>
+                </tr>
+            `;
+        }
+
+        // ============================================
+        // 持仓表过滤
+        // ============================================
+        function bindFilterTabs(strategyId) {
+            const tabs = document.querySelectorAll(`.filter-tabs[data-strategy="${strategyId}"] .filter-tab`);
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const filter = tab.dataset.filter;
+                    const rows = document.querySelectorAll(`#posTable-${strategyId} tbody tr`);
+                    rows.forEach(row => {
+                        if (filter === 'all') {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = row.dataset.direction === filter ? '' : 'none';
+                        }
+                    });
+                });
+            });
+        }
+
+        // ============================================
+        // 汇总页渲染
+        // ============================================
+        function renderSummaryPage(data) {
+            if (!data) return '<div class="empty-state">暂无数据</div>';
+
+            const comparison = data.strategy_comparison || [];
+            const allRisk = data.all_risk_positions || [];
+            const concentration = data.concentration || [];
+            const globalAdvice = data.global_advice || [];
+
+            const riskLevel = data.risk_level || 1;
+            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
+
+            return `
+                <div class="section-header">
+                    <span class="section-title">全策略汇总</span>
+                    <span class="section-badge">3个策略 · ${data.total_volume || 0}手</span>
+                </div>
+
+                <!-- KPI行 -->
+                <div class="kpi-row">
+                    <div class="risk-card">
+                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
+                        <div class="risk-info">
+                            <h3>全局风险：${data.risk_label || '正常'}</h3>
+                            <p>保证金率 ${(data.total_margin / 385200 * 100).toFixed(1)}% · 3策略在线</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">总浮动盈亏</div>
+                        <div class="kpi-value ${(data.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl || 0)}</div>
+                        <div class="kpi-sub">总持仓 ${data.total_volume || 0}手</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">总占用保证金</div>
+                        <div class="kpi-value">${formatMoney(data.total_margin || 0)}</div>
+                        <div class="kpi-sub">组合Delta ${(data.delta || 0).toFixed(2)} · Theta ${(data.theta || 0).toFixed(0)}</div>
+                    </div>
+                </div>
+
+                <!-- 组合希腊字母 -->
+                <div class="section-header"><span class="section-title">组合希腊字母</span><span class="section-badge">全账户</span></div>
+                <div class="greeks-grid">
+                    <div class="greek-card">
+                        <div class="greek-symbol">Delta</div>
+                        <div class="greek-number ${(data.delta || 0) >= 0 ? 'pos' : 'neg'}">${(data.delta || 0).toFixed(4)}</div>
+                        <div class="greek-desc">标的价格变动1元<br>组合价值变动¥${Math.abs(data.delta || 0).toFixed(2)}</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Gamma</div>
+                        <div class="greek-number ${(data.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(data.gamma || 0).toFixed(4)}</div>
+                        <div class="greek-desc">Delta变化速度<br>每1元标的变化</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Vega</div>
+                        <div class="greek-number ${(data.vega || 0) >= 0 ? 'pos' : 'neg'}">${(data.vega || 0).toFixed(2)}</div>
+                        <div class="greek-desc">IV变动1%<br>组合价值变动¥${Math.abs(data.vega || 0).toFixed(0)}</div>
+                    </div>
+                    <div class="greek-card">
+                        <div class="greek-symbol">Theta</div>
+                        <div class="greek-number ${(data.theta || 0) >= 0 ? 'pos' : 'neg'}">${(data.theta || 0).toFixed(2)}</div>
+                        <div class="greek-desc">时间流逝1天<br>组合收入¥${Math.abs(data.theta || 0).toFixed(0)}</div>
+                    </div>
+                </div>
+
+                <!-- 策略对比 -->
+                ${comparison.length > 0 ? `
+                <div class="section-header"><span class="section-title">策略对比</span></div>
+                <div class="data-section">
+                    <div style="overflow-x:auto;">
+                        <table class="data-table compare-table">
+                            <thead>
+                                <tr>
+                                    <th>策略</th><th>手数</th><th>浮动盈亏</th><th>保证金</th>
+                                    <th>保证金%</th><th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
+                                    <th>风险</th><th>风险点</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${comparison.map(s => `
+                                    <tr>
+                                        <td>${s.name}</td>
+                                        <td class="num">${s.volume}</td>
+                                        <td class="num ${s.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(s.float_pnl)}</td>
+                                        <td class="num">${formatMoney(s.margin)}</td>
+                                        <td class="num">${s.margin_ratio}%</td>
+                                        <td class="num ${(s.delta||0) >= 0 ? 'pos' : 'neg'}">${((s.delta||0)).toFixed(4)}</td>
+                                        <td class="num ${(s.gamma||0) >= 0 ? 'pos' : 'neg'}">${((s.gamma||0)).toFixed(4)}</td>
+                                        <td class="num ${(s.vega||0) >= 0 ? 'pos' : 'neg'}">${((s.vega||0)).toFixed(2)}</td>
+                                        <td class="num ${(s.theta||0) >= 0 ? 'pos' : 'neg'}">${((s.theta||0)).toFixed(2)}</td>
+                                        <td class="text-center"><span class="tag ${(s.risk_level||1) >= 3 ? 'tag-danger' : (s.risk_level||1) >= 2 ? 'tag-warn' : 'tag-ok'}">${s.risk_label}</span></td>
+                                        <td style="font-size:11px;color:var(--text2);">${(s.risk_points || []).join(', ')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td>组合汇总</td>
+                                    <td class="num">${data.total_volume || 0}</td>
+                                    <td class="num ${(data.total_float_pnl||0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl||0)}</td>
+                                    <td class="num">${formatMoney(data.total_margin||0)}</td>
+                                    <td class="num">-</td>
+                                    <td class="num ${(data.delta||0) >= 0 ? 'pos' : 'neg'}">${(data.delta||0).toFixed(4)}</td>
+                                    <td class="num ${(data.gamma||0) >= 0 ? 'pos' : 'neg'}">${(data.gamma||0).toFixed(4)}</td>
+                                    <td class="num ${(data.vega||0) >= 0 ? 'pos' : 'neg'}">${(data.vega||0).toFixed(2)}</td>
+                                    <td class="num ${(data.theta||0) >= 0 ? 'pos' : 'neg'}">${(data.theta||0).toFixed(2)}</td>
+                                    <td class="text-center"><span class="tag ${riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok'}">${data.risk_label||'正常'}</span></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- 高风险合约 -->
+                ${allRisk.length > 0 ? `
+                <div class="section-header"><span class="section-title">全市场高风险合约</span><span class="section-badge">${allRisk.length}笔</span></div>
+                <div class="risk-list">
+                    ${allRisk.map(p => {
+                        const lvl = p.risk_level || 2;
+                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
+                        return `
+                            <div class="risk-item ${lvlClass}">
+                                <div class="risk-item-info">
+                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
+                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
+                                </div>
+                                <div class="risk-item-metrics">
+                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
+                                    <span>IV ${p.iv_percentile || '-'}%</span>
+                                    <span>ATR ${p.atr_deviation || '-'}x</span>
+                                    <span>DTE ${p.dte || '-'}天</span>
+                                </div>
+                                <span class="tag ${lvl >= 4 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                ` : ''}
+
+                <!-- 集中度 -->
+                ${concentration.length > 0 ? `
+                <div class="section-header"><span class="section-title">仓位集中度</span></div>
+                <div class="data-section">
+                    <table class="data-table">
+                        <thead><tr><th>品种</th><th>手数</th><th>保证金</th><th>占比</th><th>分布</th></tr></thead>
+                        <tbody>
+                            ${concentration.map(c => `
+                                <tr ${c.risk ? 'class="row-danger"' : ''}>
+                                    <td><strong>${c.product_name}</strong> (${c.product})</td>
+                                    <td class="num">${c.volume}</td>
+                                    <td class="num">${formatMoney(c.margin)}</td>
+                                    <td class="num ${c.risk ? 'pos' : ''}">${c.ratio}%</td>
+                                    <td style="width:180px;">
+                                        <div class="conc-bar">
+                                            <div class="conc-fill ${c.risk ? 'high' : ''}" style="width:${Math.min(c.ratio, 100)}%"></div>
+                                            <div class="conc-text">${c.ratio}%</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+
+                <!-- 全局建议 -->
+                ${globalAdvice.length > 0 ? `
+                <div class="section-header"><span class="section-title">全局操作建议</span></div>
+                <div class="advice-list">
+                    ${globalAdvice.map(a => `
+                        <div class="advice-item ${a.priority || '正常'}">
+                            <div class="advice-header">
+                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
+                                <span class="advice-action">${a.action || '维持'}</span>
+                            </div>
+                            <div class="advice-reason">${a.reason || ''}</div>
+                            <div class="advice-detail">${a.detail || ''}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // ============================================
+        // 工具函数
+        // ============================================
+        function formatMoney(num) {
+            if (num === undefined || num === null) return '-';
+            const n = Number(num);
+            if (isNaN(n)) return '-';
+            const sign = n >= 0 ? '' : '-';
+            const abs = Math.abs(n);
+            if (abs >= 100000000) return sign + (abs / 100000000).toFixed(2) + '亿';
+            if (abs >= 10000) return sign + (abs / 10000).toFixed(2) + '万';
+            if (abs >= 1000) return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function getRiskSummary(metrics, level) {
+            if (level >= 4) return '存在高危指标，需立即处理';
+            if (level >= 3) return '存在预警信号，请尽快审查';
+            if (level >= 2) return '存在关注指标，持续监控中';
+            return '所有指标安全，可继续持有';
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpOverlay').classList.toggle('show');
+        }
+
+        // ============================================
+        // 说明书弹窗
+        // ============================================
+        function toggleDoc() {
+            document.getElementById('docOverlay').classList.toggle('show');
+        }
+
+        // ============================================
+        // 初始化
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            refreshInterval = setInterval(loadData, REFRESH_INTERVAL_MS);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) clearInterval(refreshInterval);
+            if (countdownInterval) clearInterval(countdownInterval);
+        });
+
+        // ============================================
+        // 系统日志功能
+        // ============================================
+        let logPanelOpen = false;
+        let logRefreshInterval = null;
+
+        function toggleLogs() {
+            const panel = document.getElementById('logPanel');
+            logPanelOpen = !logPanelOpen;
+            panel.style.display = logPanelOpen ? 'flex' : 'none';
+            if (logPanelOpen) {
+                fetchLogs();
+                logRefreshInterval = setInterval(fetchLogs, 3000);
+            } else {
+                if (logRefreshInterval) { clearInterval(logRefreshInterval); logRefreshInterval = null; }
+            }
+        }
+
+        function fetchLogs() {
+            const level = document.getElementById('logLevelFilter').value;
+            fetch(`${API_BASE}/api/logs?level=${level}`)
+                .then(r => r.json())
+                .then(logs => displayLogs(logs))
+                .catch(err => {
+                    document.getElementById('logContent').innerHTML = `<div class="log-entry log-ERROR"><span class="log-message">日志加载失败: ${err}</span></div>`;
+                });
+        }
+
+        function displayLogs(logs) {
+            const content = document.getElementById('logContent');
+            if (!logs || logs.length === 0) {
+                content.innerHTML = '<div class="log-loading">暂无日志</div>';
+                return;
+            }
+            const html = logs.reverse().map(log =>
+                `<div class="log-entry log-${log.level}">
+                    <span class="log-timestamp">${log.timestamp}</span>
+                    <span class="log-level">[${log.level}]</span>
+                    <span class="log-message">${escapeHtml(log.message)}</span>
+                </div>`
+            ).join('');
+            content.innerHTML = html;
+            content.scrollTop = 0;
+        }
+
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+    </script>
+
 <script>
-// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 16:26）
+// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 16:33）
 // 数据时间: 2026-06-16 16:10:29
 const EMBEDDED_DATA = {
   "timestamp": "2026-06-16 16:10:29",
@@ -6373,769 +7137,5 @@ const EMBEDDED_DATA = {
   }
 };
 </script>
-
-        // ============================================
-        // 后端地址配置（支持URL参数 ?api=https://your-backend.com:18099）
-        // ============================================
-        const _urlParams = new URLSearchParams(window.location.search);
-        const API_BASE = _urlParams.get('api') || '';  // 默认空（相对路径，本地使用）
-        // ============================================
-
-        // ============================================
-        // 全局状态
-        // ============================================
-        let currentData = null;
-        let refreshInterval = null;
-        let countdownInterval = null;
-        let nextRefreshTime = null;
-        let isRefreshing = false;
-        let currentPage = 'eagle';
-        const REFRESH_INTERVAL_MS = 900000; // 15分钟（与后端数据刷新频率对齐）
-
-        // ============================================
-        // 侧边栏导航
-        // ============================================
-        document.querySelectorAll('.sidebar-item[data-page]').forEach(item => {
-            item.addEventListener('click', () => {
-                const page = item.dataset.page;
-                currentPage = page;
-                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                if (currentData) renderPage(page);
-            });
-        });
-
-        function renderPage(page) {
-            currentPage = page;
-            if (!currentData) return;
-            const main = document.getElementById('main-content');
-            switch (page) {
-                case 'eagle':
-                    main.innerHTML = renderStrategyPage('eagle', '飞鹰策略', currentData.eagle || {});
-                    bindFilterTabs('eagle');
-                    break;
-                case 'single_sell':
-                    main.innerHTML = renderStrategyPage('single_sell', '单卖策略', currentData.single_sell || {});
-                    bindFilterTabs('single_sell');
-                    break;
-                case 'double_sell':
-                    main.innerHTML = renderStrategyPage('double_sell', '双卖策略', currentData.double_sell || {});
-                    bindFilterTabs('double_sell');
-                    break;
-                case 'summary':
-                    main.innerHTML = renderSummaryPage(currentData.summary || {});
-                    break;
-            }
-        }
-
-        // ============================================
-        // 数据加载（本地优先API / 静态文件 / GitHub Fallback）
-        // ============================================
-        // <!-- DEPLOY_REPLACE_START -->
-        async function loadData() {
-            try {
-                let data;
-                // GitHub Pages 模式：直接使用内嵌数据
-                if (typeof EMBEDDED_DATA !== 'undefined') {
-                    data = EMBEDDED_DATA;
-                } else {
-                    // 保底：尝试从 GitHub API 读取 data.json
-                    const ghRawUrl = 'https://api.github.com/repos/wangtl-tl/option-risk-system/contents/data.json';
-                    const ghResp = await fetch(ghRawUrl, {
-                        headers: { 'Accept': 'application/vnd.github.v3.raw' }
-                    });
-                    if (!ghResp.ok) throw new Error('数据源不可用');
-                    data = await ghResp.json();
-                }
-                currentData = data;
-                updateStatusBar(data);
-                updateSidebarIndicators(data);
-                renderPage(currentPage);
-            } catch (error) {
-                console.error('数据加载失败:', error);
-                document.getElementById('main-content').innerHTML =
-                    '<div class="empty-state" style="color: var(--red);">数据加载失败，请检查网络</div>';
-            }
-        }
-        // <!-- DEPLOY_REPLACE_END -->
-
-        // ============================================
-        // 全局状态条更新
-        // ============================================
-        function updateStatusBar(data) {
-            const s = data.summary || {};
-            const pnl = s.total_float_pnl || 0;
-
-            document.getElementById('statusPnl').textContent = (pnl >= 0 ? '+' : '') + formatMoney(pnl);
-            document.getElementById('statusPnl').className = 'status-value ' + (pnl >= 0 ? 'up' : 'down');
-
-            const marginTotal = s.total_margin || 0;
-            document.getElementById('statusMargin').textContent = formatMoney(marginTotal);
-
-            document.getElementById('statusDelta').textContent = (s.delta || 0).toFixed(2);
-            document.getElementById('statusDelta').className = 'status-value ' + ((s.delta || 0) >= 0 ? 'up' : 'down');
-
-            document.getElementById('statusTheta').textContent = (s.theta || 0).toFixed(0);
-            document.getElementById('statusTheta').className = 'status-value ' + ((s.theta || 0) >= 0 ? 'up' : 'down');
-
-            const level = s.risk_level || 1;
-            const dot = document.getElementById('statusDot');
-            const txt = document.getElementById('statusText');
-            dot.className = 'status-dot';
-            if (level >= 4) { dot.classList.add('critical'); txt.textContent = '高危'; }
-            else if (level >= 3) { dot.classList.add('warn'); txt.textContent = '预警'; }
-            else { dot.classList.add('ok'); txt.textContent = '正常'; }
-
-            if (data.timestamp) {
-                // 显示数据时间戳 + 下次刷新倒计时
-                document.getElementById('statusTime').textContent = data.timestamp;
-                // 重置下次刷新时间
-                nextRefreshTime = Date.now() + REFRESH_INTERVAL_MS;
-                if (!countdownInterval) {
-                    countdownInterval = setInterval(updateCountdown, 1000);
-                }
-            }
-
-            updateAccountSummary(data);
-        }
-
-        // ============================================
-        // 下次刷新倒计时
-        // ============================================
-        function updateCountdown() {
-            if (!nextRefreshTime) return;
-            const now = Date.now();
-            const diff = nextRefreshTime - now;
-            const el = document.getElementById('statusTime');
-            if (diff <= 0) {
-                el.textContent = '刷新中...';
-                return;
-            }
-            const minutes = Math.floor(diff / 60000);
-            const seconds = Math.floor((diff % 60000) / 1000);
-            const baseText = currentData && currentData.timestamp ? currentData.timestamp.split(' ')[1] || currentData.timestamp : '';
-            el.textContent = baseText + ' (下次' + minutes + ':' + String(seconds).padStart(2, '0') + ')';
-        }
-
-        function updateAccountSummary(data) {
-            const s = data.summary || {};
-            const totalMargin = s.total_margin || 0;
-
-            const totalAsset = 385200;
-            const available = totalAsset - totalMargin;
-            const ratio = totalAsset > 0 ? (totalMargin / totalAsset * 100) : 0;
-
-            document.getElementById('acctTotal').textContent = formatMoney(totalAsset);
-            document.getElementById('acctUsed').textContent = formatMoney(totalMargin);
-            document.getElementById('acctAvail').textContent = formatMoney(Math.max(0, available));
-
-            const bar = document.getElementById('acctBar');
-            bar.style.width = Math.min(ratio, 100) + '%';
-            bar.className = 'mini-progress-fill';
-            if (ratio > 90) bar.classList.add('danger');
-            else if (ratio > 80) bar.classList.add('warn');
-            else bar.classList.add('safe');
-        }
-
-        function updateSidebarIndicators(data) {
-            const strategies = [
-                { key: 'eagle', id: 'ind-eagle' },
-                { key: 'single_sell', id: 'ind-single_sell' },
-                { key: 'double_sell', id: 'ind-double_sell' }
-            ];
-            strategies.forEach(st => {
-                const el = document.getElementById(st.id);
-                if (!el) return;
-                const d = data[st.key] || {};
-                const m = d.metrics || {};
-                const level = m.risk_level || 1;
-                el.className = 'indicator';
-                if (level >= 4) el.classList.add('critical');
-                else if (level >= 3) el.classList.add('warn');
-                else el.classList.add('ok');
-            });
-        }
-
-        // ============================================
-        // 手动刷新
-        // ============================================
-        async function manualRefresh() {
-            if (isRefreshing) return;
-            isRefreshing = true;
-            const btn = document.getElementById('btnRefresh');
-            const orig = btn.textContent;
-            btn.classList.add('spinning');
-            btn.textContent = '刷新中...';
-
-            try {
-                if (API_BASE) {
-                    // API模式：触发后端刷新
-                    const resp = await fetch(API_BASE + '/api/refresh?t=' + Date.now());
-                    const result = await resp.json();
-                    if (result.success) {
-                        await loadData();
-                    } else { throw new Error(result.message || '刷新失败'); }
-                }
-                // 静态模式：重新加载 data.json
-                await loadData();
-                btn.textContent = '已刷新';
-                setTimeout(() => { btn.textContent = orig; }, 1500);
-            } catch (e) {
-                btn.textContent = '错误';
-                btn.style.background = '#EF4444';
-                setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
-            } finally {
-                isRefreshing = false;
-                btn.classList.remove('spinning');
-            }
-        }
-
-        // ============================================
-        // 策略页面渲染（仪表盘视图）
-        // ============================================
-        function renderStrategyPage(strategyId, strategyName, data) {
-            const metrics = data.metrics || {};
-            const positions = data.positions || [];
-            const riskPositions = data.risk_positions || [];
-            const advice = data.advice || [];
-            const productGreeks = data.product_greeks || [];
-
-            if (positions.length === 0) {
-                return '<div class="empty-state">暂无持仓数据</div>';
-            }
-
-            const riskLevel = metrics.risk_level || 1;
-            const riskLabel = metrics.risk_label || '正常';
-            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
-
-            const sellPositions = positions.filter(p => p.direction === '空');
-            const buyPositions = positions.filter(p => p.direction === '多');
-
-            return `
-                <!-- 策略标题 -->
-                <div class="section-header">
-                    <span class="section-title">${strategyName} · 风控仪表盘</span>
-                    <span class="section-badge">${positions.length}笔持仓</span>
-                </div>
-
-                <!-- KPI行 -->
-                <div class="kpi-row">
-                    <div class="risk-card">
-                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
-                        <div class="risk-info">
-                            <h3>${riskLabel}</h3>
-                            <p>${getRiskSummary(metrics, riskLevel)}</p>
-                        </div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">浮动盈亏</div>
-                        <div class="kpi-value ${(metrics.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(metrics.total_float_pnl || 0)}</div>
-                        <div class="kpi-sub">${positions.length}笔 · ${sellPositions.length}卖${buyPositions.length}买</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">保证金使用率</div>
-                        <div class="kpi-value">${(metrics.margin_ratio || 0).toFixed(1)}%</div>
-                        <div class="mini-progress" style="margin-top:8px;">
-                            <div class="mini-progress-fill ${(metrics.margin_ratio || 0) > 90 ? 'danger' : (metrics.margin_ratio || 0) > 80 ? 'warn' : 'safe'}" style="width:${Math.min(metrics.margin_ratio || 0, 100)}%"></div>
-                        </div>
-                        <div class="kpi-sub" style="margin-top:6px;">占用 ${formatMoney(metrics.total_margin || 0)}</div>
-                    </div>
-                </div>
-
-                <!-- 希腊字母 -->
-                <div class="section-header"><span class="section-title">希腊字母</span></div>
-                <div class="greeks-grid">
-                    <div class="greek-card">
-                        <div class="greek-symbol">Delta</div>
-                        <div class="greek-number ${(metrics.delta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.delta || 0).toFixed(4)}</div>
-                        <div class="greek-desc">标的价格变动1元<br>组合价值变动金额</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Gamma</div>
-                        <div class="greek-number ${(metrics.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.gamma || 0).toFixed(4)}</div>
-                        <div class="greek-desc">Delta对标的价格<br>变化的敏感度</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Vega</div>
-                        <div class="greek-number ${(metrics.vega || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.vega || 0).toFixed(2)}</div>
-                        <div class="greek-desc">IV变动1%<br>组合价值变动金额</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Theta</div>
-                        <div class="greek-number ${(metrics.theta || 0) >= 0 ? 'pos' : 'neg'}">${(metrics.theta || 0).toFixed(2)}</div>
-                        <div class="greek-desc">时间流逝1天<br>组合价值变动金额</div>
-                    </div>
-                </div>
-
-                <!-- IV指标 -->
-                <div class="iv-row">
-                    <div class="iv-card">
-                        <div class="iv-label">当前IV</div>
-                        <div class="iv-value low">${(metrics.current_iv || 0).toFixed(1)}%</div>
-                    </div>
-                    <div class="iv-card">
-                        <div class="iv-label">IV分位</div>
-                        <div class="iv-value ${(metrics.iv_percentile || 0) > 80 ? 'high' : (metrics.iv_percentile || 0) > 70 ? 'mid' : 'low'}">${(metrics.iv_percentile || 0).toFixed(1)}%</div>
-                    </div>
-                    <div class="iv-card">
-                        <div class="iv-label">近远月IV价差</div>
-                        <div class="iv-value low">${(metrics.iv_spread || 0).toFixed(2)}%</div>
-                    </div>
-                </div>
-
-                <!-- 品种希腊字母 -->
-                ${productGreeks.length > 0 ? `
-                <div class="section-header"><span class="section-title">品种希腊字母</span><span class="section-badge">${productGreeks.length}个品种</span></div>
-                <div class="product-strip">
-                    ${productGreeks.map(pg => `
-                        <div class="product-chip">
-                            <div class="name">${pg.product_name || pg.product}</div>
-                            <div class="delta ${(pg.delta || 0) >= 0 ? 'pos' : 'neg'}">Δ ${(pg.delta || 0).toFixed(2)}</div>
-                            <div class="gamma-val">Γ ${(pg.gamma || 0).toFixed(3)} · ν ${(pg.vega || 0).toFixed(0)}</div>
-                            <div class="theta-val"><span class="t-label">θ </span><span class="t-num ${(pg.theta || 0) >= 0 ? 'pos' : 'neg'}">${(pg.theta || 0).toFixed(1)}</span></div>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : ''}
-
-                <!-- 持仓明细 -->
-                <div class="data-section">
-                    <div class="data-section-header">
-                        <span class="section-title" style="font-size:13px;">持仓明细</span>
-                        <div class="filter-tabs" data-strategy="${strategyId}">
-                            <button class="filter-tab active" data-filter="all">全部 (${positions.length})</button>
-                            <button class="filter-tab" data-filter="sell">卖出 (${sellPositions.length})</button>
-                            <button class="filter-tab" data-filter="buy">买入 (${buyPositions.length})</button>
-                        </div>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table class="data-table" id="posTable-${strategyId}">
-                            <thead>
-                                <tr>
-                                    <th>品种</th>
-                                    <th>合约代码</th>
-                                    <th>方向</th>
-                                    <th>手数</th>
-                                    <th>开仓均价</th>
-                                    <th>最新价</th>
-                                    <th>浮动盈亏</th>
-                                    <th>盈亏%</th>
-                                    <th>保证金</th>
-                                    <th>保证金%</th>
-                                    <th>DTE</th>
-                                    <th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
-                                    <th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
-                                    <th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
-                                    <th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
-                                    <th>风险</th>
-                                </tr>
-                            </thead>
-                            <tbody id="posBody-${strategyId}">
-                                ${positions.map(p => renderPositionRow(p)).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- 风险异常清单 -->
-                ${riskPositions.length > 0 ? `
-                <div class="section-header"><span class="section-title">风险异常</span><span class="section-badge">${riskPositions.length}笔</span></div>
-                <div class="risk-list">
-                    ${riskPositions.map(p => {
-                        const lvl = p.risk_level || 2;
-                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
-                        return `
-                            <div class="risk-item ${lvlClass}">
-                                <div class="risk-item-info">
-                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
-                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
-                                </div>
-                                <div class="risk-item-metrics">
-                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
-                                    <span>IV ${p.iv_percentile || '-'}%</span>
-                                    <span>ATR ${p.atr_deviation || '-'}x</span>
-                                    <span>DTE ${p.dte || '-'}天</span>
-                                </div>
-                                <span class="tag ${lvl >= 4 ? 'tag-danger' : lvl >= 3 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-                ` : ''}
-
-                <!-- 调仓建议 -->
-                ${advice.length > 0 ? `
-                <div class="section-header"><span class="section-title">调仓建议</span><span class="section-badge">${advice.length}条</span></div>
-                <div class="advice-list">
-                    ${advice.map(a => `
-                        <div class="advice-item ${a.priority || '正常'}">
-                            <div class="advice-header">
-                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
-                                <span class="advice-action">${a.action || '维持'}</span>
-                            </div>
-                            <div class="advice-reason">${a.reason || ''}</div>
-                            <div class="advice-detail">${a.detail || ''}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : ''}
-            `;
-        }
-
-        function renderPositionRow(p) {
-            const riskLevel = p.risk_level || 1;
-            const rowClass = riskLevel >= 4 ? 'row-danger' : riskLevel >= 3 ? 'row-warn' : '';
-            const dirColor = p.direction === '多' ? 'color:var(--red);' : 'color:var(--green);';
-            const tagClass = riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok';
-            const fmt4 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(4);
-            const fmt2 = v => (v === undefined || v === null || v === '') ? '-' : Number(v).toFixed(2);
-            // 数据来源标记（希腊字母列）
-            let sourceMark = '';
-            if (p.greeks_source === 'tqsdk') {
-                sourceMark = '<span style="color:#10B981;font-size:9px;margin-left:2px;">●TqSdk</span>';
-            } else if (p.greeks_source && p.greeks_source.startsWith('database')) {
-                sourceMark = '<span style="color:#3B82F6;font-size:9px;margin-left:2px;">●DB</span>';
-            } else if (p.greeks_source === 'bs_estimate') {
-                sourceMark = '<span style="color:#F59E0B;font-size:9px;margin-left:2px;">●估算</span>';
-            }
-            // 价格来源标记（最新价列）
-            let priceMark = '';
-            const ps = p.price_source || '';
-            if (ps === 'tqsdk' || (!ps && p.last_price > 0 && p.last_price !== p.open_price)) {
-                priceMark = '<span style="color:#10B981;font-size:9px;margin-left:3px;opacity:0.7;">[R]</span>';
-            } else if (ps === 'bs_estimate') {
-                priceMark = '<span style="color:#F59E0B;font-size:9px;margin-left:3px;opacity:0.7;">[E]</span>';
-            } else if (ps === 'open_price' || p.last_price === p.open_price) {
-                priceMark = '<span style="color:#EF4444;font-size:9px;margin-left:3px;opacity:0.7;">[O]</span>';
-            }
-            return `
-                <tr class="${rowClass}" data-direction="${p.direction === '空' ? 'sell' : 'buy'}">
-                    <td><strong>${p.product_name || p.product}</strong></td>
-                    <td style="color:var(--cyan);">${p.contract}</td>
-                    <td class="text-center"><span style="${dirColor}">${p.direction}</span></td>
-                    <td class="num">${p.volume}</td>
-                    <td class="num">${p.open_price}</td>
-                    <td class="num">${p.last_price || '-'}${priceMark}</td>
-                    <td class="num ${p.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(p.float_pnl)}</td>
-                    <td class="num ${p.pnl_ratio >= 0 ? 'pos' : 'neg'}">${p.pnl_ratio || 0}%</td>
-                    <td class="num">${formatMoney(p.margin)}</td>
-                    <td class="num">${p.margin_ratio || 0}%</td>
-                    <td class="num">${p.dte}天</td>
-                    <td class="num" style="font-size:11px;">${fmt4(p.delta || 0)}${sourceMark}</td>
-                    <td class="num" style="font-size:11px;">${fmt4(p.gamma || 0)}</td>
-                    <td class="num" style="font-size:11px;">${fmt2(p.vega || 0)}</td>
-                    <td class="num" style="font-size:11px;">${fmt2(p.theta || 0)}</td>
-                    <td class="text-center"><span class="tag ${tagClass}">${p.risk_label || '正常'}</span></td>
-                </tr>
-            `;
-        }
-
-        // ============================================
-        // 持仓表过滤
-        // ============================================
-        function bindFilterTabs(strategyId) {
-            const tabs = document.querySelectorAll(`.filter-tabs[data-strategy="${strategyId}"] .filter-tab`);
-            tabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    tabs.forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-                    const filter = tab.dataset.filter;
-                    const rows = document.querySelectorAll(`#posTable-${strategyId} tbody tr`);
-                    rows.forEach(row => {
-                        if (filter === 'all') {
-                            row.style.display = '';
-                        } else {
-                            row.style.display = row.dataset.direction === filter ? '' : 'none';
-                        }
-                    });
-                });
-            });
-        }
-
-        // ============================================
-        // 汇总页渲染
-        // ============================================
-        function renderSummaryPage(data) {
-            if (!data) return '<div class="empty-state">暂无数据</div>';
-
-            const comparison = data.strategy_comparison || [];
-            const allRisk = data.all_risk_positions || [];
-            const concentration = data.concentration || [];
-            const globalAdvice = data.global_advice || [];
-
-            const riskLevel = data.risk_level || 1;
-            const riskClass = riskLevel >= 4 ? 'critical' : riskLevel >= 3 ? 'warning' : riskLevel >= 2 ? 'watch' : 'normal';
-
-            return `
-                <div class="section-header">
-                    <span class="section-title">全策略汇总</span>
-                    <span class="section-badge">3个策略 · ${data.total_volume || 0}手</span>
-                </div>
-
-                <!-- KPI行 -->
-                <div class="kpi-row">
-                    <div class="risk-card">
-                        <div class="risk-circle ${riskClass}">${riskLevel >= 4 ? '!' : riskLevel >= 3 ? '!' : '&#9679;'}</div>
-                        <div class="risk-info">
-                            <h3>全局风险：${data.risk_label || '正常'}</h3>
-                            <p>保证金率 ${(data.total_margin / 385200 * 100).toFixed(1)}% · 3策略在线</p>
-                        </div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">总浮动盈亏</div>
-                        <div class="kpi-value ${(data.total_float_pnl || 0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl || 0)}</div>
-                        <div class="kpi-sub">总持仓 ${data.total_volume || 0}手</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">总占用保证金</div>
-                        <div class="kpi-value">${formatMoney(data.total_margin || 0)}</div>
-                        <div class="kpi-sub">组合Delta ${(data.delta || 0).toFixed(2)} · Theta ${(data.theta || 0).toFixed(0)}</div>
-                    </div>
-                </div>
-
-                <!-- 组合希腊字母 -->
-                <div class="section-header"><span class="section-title">组合希腊字母</span><span class="section-badge">全账户</span></div>
-                <div class="greeks-grid">
-                    <div class="greek-card">
-                        <div class="greek-symbol">Delta</div>
-                        <div class="greek-number ${(data.delta || 0) >= 0 ? 'pos' : 'neg'}">${(data.delta || 0).toFixed(4)}</div>
-                        <div class="greek-desc">标的价格变动1元<br>组合价值变动¥${Math.abs(data.delta || 0).toFixed(2)}</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Gamma</div>
-                        <div class="greek-number ${(data.gamma || 0) >= 0 ? 'pos' : 'neg'}">${(data.gamma || 0).toFixed(4)}</div>
-                        <div class="greek-desc">Delta变化速度<br>每1元标的变化</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Vega</div>
-                        <div class="greek-number ${(data.vega || 0) >= 0 ? 'pos' : 'neg'}">${(data.vega || 0).toFixed(2)}</div>
-                        <div class="greek-desc">IV变动1%<br>组合价值变动¥${Math.abs(data.vega || 0).toFixed(0)}</div>
-                    </div>
-                    <div class="greek-card">
-                        <div class="greek-symbol">Theta</div>
-                        <div class="greek-number ${(data.theta || 0) >= 0 ? 'pos' : 'neg'}">${(data.theta || 0).toFixed(2)}</div>
-                        <div class="greek-desc">时间流逝1天<br>组合收入¥${Math.abs(data.theta || 0).toFixed(0)}</div>
-                    </div>
-                </div>
-
-                <!-- 策略对比 -->
-                ${comparison.length > 0 ? `
-                <div class="section-header"><span class="section-title">策略对比</span></div>
-                <div class="data-section">
-                    <div style="overflow-x:auto;">
-                        <table class="data-table compare-table">
-                            <thead>
-                                <tr>
-                                    <th>策略</th><th>手数</th><th>浮动盈亏</th><th>保证金</th>
-                                    <th>保证金%</th><th>Delta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Gamma<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Vega<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th><th>Theta<br><span style="font-weight:400;font-size:10px;color:var(--text3);">每手</span></th>
-                                    <th>风险</th><th>风险点</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${comparison.map(s => `
-                                    <tr>
-                                        <td>${s.name}</td>
-                                        <td class="num">${s.volume}</td>
-                                        <td class="num ${s.float_pnl >= 0 ? 'pos' : 'neg'}">${formatMoney(s.float_pnl)}</td>
-                                        <td class="num">${formatMoney(s.margin)}</td>
-                                        <td class="num">${s.margin_ratio}%</td>
-                                        <td class="num ${(s.delta||0) >= 0 ? 'pos' : 'neg'}">${((s.delta||0)).toFixed(4)}</td>
-                                        <td class="num ${(s.gamma||0) >= 0 ? 'pos' : 'neg'}">${((s.gamma||0)).toFixed(4)}</td>
-                                        <td class="num ${(s.vega||0) >= 0 ? 'pos' : 'neg'}">${((s.vega||0)).toFixed(2)}</td>
-                                        <td class="num ${(s.theta||0) >= 0 ? 'pos' : 'neg'}">${((s.theta||0)).toFixed(2)}</td>
-                                        <td class="text-center"><span class="tag ${(s.risk_level||1) >= 3 ? 'tag-danger' : (s.risk_level||1) >= 2 ? 'tag-warn' : 'tag-ok'}">${s.risk_label}</span></td>
-                                        <td style="font-size:11px;color:var(--text2);">${(s.risk_points || []).join(', ')}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td>组合汇总</td>
-                                    <td class="num">${data.total_volume || 0}</td>
-                                    <td class="num ${(data.total_float_pnl||0) >= 0 ? 'pos' : 'neg'}">${formatMoney(data.total_float_pnl||0)}</td>
-                                    <td class="num">${formatMoney(data.total_margin||0)}</td>
-                                    <td class="num">-</td>
-                                    <td class="num ${(data.delta||0) >= 0 ? 'pos' : 'neg'}">${(data.delta||0).toFixed(4)}</td>
-                                    <td class="num ${(data.gamma||0) >= 0 ? 'pos' : 'neg'}">${(data.gamma||0).toFixed(4)}</td>
-                                    <td class="num ${(data.vega||0) >= 0 ? 'pos' : 'neg'}">${(data.vega||0).toFixed(2)}</td>
-                                    <td class="num ${(data.theta||0) >= 0 ? 'pos' : 'neg'}">${(data.theta||0).toFixed(2)}</td>
-                                    <td class="text-center"><span class="tag ${riskLevel >= 3 ? 'tag-danger' : riskLevel >= 2 ? 'tag-warn' : 'tag-ok'}">${data.risk_label||'正常'}</span></td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-                ` : ''}
-
-                <!-- 高风险合约 -->
-                ${allRisk.length > 0 ? `
-                <div class="section-header"><span class="section-title">全市场高风险合约</span><span class="section-badge">${allRisk.length}笔</span></div>
-                <div class="risk-list">
-                    ${allRisk.map(p => {
-                        const lvl = p.risk_level || 2;
-                        const lvlClass = lvl >= 4 ? 'lvl-critical' : lvl >= 3 ? 'lvl-warning' : 'lvl-watch';
-                        return `
-                            <div class="risk-item ${lvlClass}">
-                                <div class="risk-item-info">
-                                    <div class="risk-item-contract">${p.product_name || p.product} - ${p.contract}</div>
-                                    <div class="risk-item-reason">${p.risk_label || '风险合约'}</div>
-                                </div>
-                                <div class="risk-item-metrics">
-                                    <span>保证金 ${p.margin_ratio || '-'}%</span>
-                                    <span>IV ${p.iv_percentile || '-'}%</span>
-                                    <span>ATR ${p.atr_deviation || '-'}x</span>
-                                    <span>DTE ${p.dte || '-'}天</span>
-                                </div>
-                                <span class="tag ${lvl >= 4 ? 'tag-danger' : 'tag-warn'}">${p.risk_label || '关注'}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-                ` : ''}
-
-                <!-- 集中度 -->
-                ${concentration.length > 0 ? `
-                <div class="section-header"><span class="section-title">仓位集中度</span></div>
-                <div class="data-section">
-                    <table class="data-table">
-                        <thead><tr><th>品种</th><th>手数</th><th>保证金</th><th>占比</th><th>分布</th></tr></thead>
-                        <tbody>
-                            ${concentration.map(c => `
-                                <tr ${c.risk ? 'class="row-danger"' : ''}>
-                                    <td><strong>${c.product_name}</strong> (${c.product})</td>
-                                    <td class="num">${c.volume}</td>
-                                    <td class="num">${formatMoney(c.margin)}</td>
-                                    <td class="num ${c.risk ? 'pos' : ''}">${c.ratio}%</td>
-                                    <td style="width:180px;">
-                                        <div class="conc-bar">
-                                            <div class="conc-fill ${c.risk ? 'high' : ''}" style="width:${Math.min(c.ratio, 100)}%"></div>
-                                            <div class="conc-text">${c.ratio}%</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                ` : ''}
-
-                <!-- 全局建议 -->
-                ${globalAdvice.length > 0 ? `
-                <div class="section-header"><span class="section-title">全局操作建议</span></div>
-                <div class="advice-list">
-                    ${globalAdvice.map(a => `
-                        <div class="advice-item ${a.priority || '正常'}">
-                            <div class="advice-header">
-                                <span class="advice-priority ${a.priority || '正常'}">${a.priority || '正常'}</span>
-                                <span class="advice-action">${a.action || '维持'}</span>
-                            </div>
-                            <div class="advice-reason">${a.reason || ''}</div>
-                            <div class="advice-detail">${a.detail || ''}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : ''}
-            `;
-        }
-
-        // ============================================
-        // 工具函数
-        // ============================================
-        function formatMoney(num) {
-            if (num === undefined || num === null) return '-';
-            const n = Number(num);
-            if (isNaN(n)) return '-';
-            const sign = n >= 0 ? '' : '-';
-            const abs = Math.abs(n);
-            if (abs >= 100000000) return sign + (abs / 100000000).toFixed(2) + '亿';
-            if (abs >= 10000) return sign + (abs / 10000).toFixed(2) + '万';
-            if (abs >= 1000) return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-            return sign + abs.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-
-        function getRiskSummary(metrics, level) {
-            if (level >= 4) return '存在高危指标，需立即处理';
-            if (level >= 3) return '存在预警信号，请尽快审查';
-            if (level >= 2) return '存在关注指标，持续监控中';
-            return '所有指标安全，可继续持有';
-        }
-
-        function toggleHelp() {
-            document.getElementById('helpOverlay').classList.toggle('show');
-        }
-
-        // ============================================
-        // 说明书弹窗
-        // ============================================
-        function toggleDoc() {
-            document.getElementById('docOverlay').classList.toggle('show');
-        }
-
-        // ============================================
-        // 初始化
-        // ============================================
-        document.addEventListener('DOMContentLoaded', () => {
-            loadData();
-            refreshInterval = setInterval(loadData, REFRESH_INTERVAL_MS);
-        });
-
-        window.addEventListener('beforeunload', () => {
-            if (refreshInterval) clearInterval(refreshInterval);
-            if (countdownInterval) clearInterval(countdownInterval);
-        });
-
-        // ============================================
-        // 系统日志功能
-        // ============================================
-        let logPanelOpen = false;
-        let logRefreshInterval = null;
-
-        function toggleLogs() {
-            const panel = document.getElementById('logPanel');
-            logPanelOpen = !logPanelOpen;
-            panel.style.display = logPanelOpen ? 'flex' : 'none';
-            if (logPanelOpen) {
-                fetchLogs();
-                logRefreshInterval = setInterval(fetchLogs, 3000);
-            } else {
-                if (logRefreshInterval) { clearInterval(logRefreshInterval); logRefreshInterval = null; }
-            }
-        }
-
-        function fetchLogs() {
-            const level = document.getElementById('logLevelFilter').value;
-            fetch(`${API_BASE}/api/logs?level=${level}`)
-                .then(r => r.json())
-                .then(logs => displayLogs(logs))
-                .catch(err => {
-                    document.getElementById('logContent').innerHTML = `<div class="log-entry log-ERROR"><span class="log-message">日志加载失败: ${err}</span></div>`;
-                });
-        }
-
-        function displayLogs(logs) {
-            const content = document.getElementById('logContent');
-            if (!logs || logs.length === 0) {
-                content.innerHTML = '<div class="log-loading">暂无日志</div>';
-                return;
-            }
-            const html = logs.reverse().map(log =>
-                `<div class="log-entry log-${log.level}">
-                    <span class="log-timestamp">${log.timestamp}</span>
-                    <span class="log-level">[${log.level}]</span>
-                    <span class="log-message">${escapeHtml(log.message)}</span>
-                </div>`
-            ).join('');
-            content.innerHTML = html;
-            content.scrollTop = 0;
-        }
-
-        function escapeHtml(text) {
-            const d = document.createElement('div');
-            d.textContent = text;
-            return d.innerHTML;
-        }
-
-    </script>
 </body>
 </html>
