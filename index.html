@@ -1421,7 +1421,7 @@ P3: 默认归类为"飞鹰策略"</pre>
 
     <script>
 <script>
-// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 08:51）
+// 内嵌静态数据（GitHub Pages 自动生成 @ 2026-06-16 09:28）
 // 数据时间: 2026-06-16 08:44:04
 const EMBEDDED_DATA = {
   "timestamp": "2026-06-16 08:44:04",
@@ -6128,14 +6128,13 @@ const EMBEDDED_DATA = {
         // ============================================
         // 数据加载（本地优先API / 静态文件 / GitHub Fallback）
         // ============================================
-        async function loadData() {
+                async function loadData() {
             try {
                 let data;
                 // GitHub Pages 模式：优先使用内嵌数据
                 if (typeof EMBEDDED_DATA !== 'undefined') {
                     data = EMBEDDED_DATA;
-                }
-                if (API_BASE) {
+                } else if (API_BASE) {
                     // 模式1：显式指定API地址
                     const response = await fetch(API_BASE + '/api/data?t=' + Date.now());
                     data = await response.json();
